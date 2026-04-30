@@ -8,6 +8,10 @@ import Login from './pages/admin/Login/Login';
 import AlertsCenter from './pages/admin/Alerts/AlertsCenter';
 import { useAuth, AuthProvider } from './context/AuthContext';
 
+import LandingPage from './pages/landing/LandingPage';
+import Register from './pages/user/Register';
+import UserLogin from './pages/user/UserLogin';
+
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -24,7 +28,8 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    // Redirect to admin login if they were trying to access admin area
+    return <Navigate to="/admin-login" state={{ from: location }} replace />;
   }
 
   return children;
@@ -34,23 +39,30 @@ const AppRoutes = () => {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<UserLogin />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/admin-login" element={<Login />} />
         
-        <Route path="/" element={
+        <Route element={
           <ProtectedRoute>
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<Dashboard />} />
-          <Route path="inventory" element={<Inventory />} />
-          <Route path="users" element={<Users />} />
-          <Route path="alerts" element={<AlertsCenter />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/inventory" element={<Inventory />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/alerts" element={<AlertsCenter />} />
+          <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         </Route>
+        
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
   );
 };
+
+
 
 export default AppRoutes;
 

@@ -9,8 +9,9 @@ const TopBar = ({ title, onRefresh, alertCount = 0, children }) => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/admin-login');
   };
+
 
   return (
     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">

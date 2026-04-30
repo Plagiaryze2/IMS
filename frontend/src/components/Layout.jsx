@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Package, Users, User } from 'lucide-react';
+import { LayoutDashboard, Package, Users, User, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Layout = () => {
@@ -9,13 +9,17 @@ const Layout = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/admin-login');
   };
+
   const navItems = [
-    { name: 'DASHBOARD', icon: <LayoutDashboard size={20} />, path: '/' },
+    { name: 'DASHBOARD', icon: <LayoutDashboard size={20} />, path: '/dashboard' },
     { name: 'INVENTORY', icon: <Package size={20} />, path: '/inventory' },
     { name: 'USERS', icon: <Users size={20} />, path: '/users' },
+    { name: 'ALERTS', icon: <Bell size={20} />, path: '/alerts' },
   ];
+
+
 
   return (
     <div className="flex h-screen w-full bg-white text-gray-800 font-sans">

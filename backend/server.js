@@ -98,6 +98,55 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// POST /api/auth/register
+app.post('/api/auth/register', async (req, res) => {
+    const { fullName, email, accountType, password } = req.body;
+    if (!fullName || !email || !password) return res.status(400).json({ error: 'Missing required fields' });
+
+    try {
+        const db = await getPool();
+        
+        // Check if user exists
+        const check = await db.request()
+            .input('e', sql.NVarChar, email)
+            .query('SELECT 1 FROM Users WHERE Email = @e');
+        if (check.recordset.length > 0) return res.status(400).json({ error: 'Email already registered' });
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Insert User
+        const userResult = await db.request()
+            .input('fn', sql.NVarChar, fullName)
+            .input('e', sql.NVarChar, email)
+            .input('ph', sql.NVarChar, hashedPassword)
+            .query(`
+                INSERT INTO Users (Username, FullName, Email, PasswordHash, IsActive, CreatedAt, RequirePasswordChange)
+                OUTPUT INSERTED.UserID
+                VALUES (@e, @fn, @e, @ph, 1, GETDATE(), 0)
+            `);
+        
+        const userId = userResult.recordset[0].UserID;
+
+        // Map accountType to RoleID
+        let roleId = 2; // Default: Warehouse Manager
+        if (accountType === 'operator') roleId = 3;
+        if (accountType === 'analyst') roleId = 3;
+
+        await db.request()
+            .input('uid', sql.Int, userId)
+            .input('rid', sql.Int, roleId)
+            .query('INSERT INTO UserRoles (UserID, RoleID) VALUES (@uid, @rid)');
+
+        await addLog('USER', `New user "${email}" registered.`, userId);
+
+        res.json({ message: 'Registration successful', userId });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════

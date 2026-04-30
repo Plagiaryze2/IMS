@@ -35,7 +35,10 @@ async function request(path, options = {}) {
 export const authAPI = {
   login: (username, password) =>
     request('/auth/login', { method: 'POST', body: { username, password } }),
+  register: (data) =>
+    request('/auth/register', { method: 'POST', body: data }),
 };
+
 
 // ─── Dashboard ────────────────────────────────────────────────────────────
 export const dashboardAPI = {
