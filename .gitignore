@@ -1,0 +1,70 @@
+# Logs
+**/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency directories
+**/node_modules/
+jspm_packages/
+
+# environment variables
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+**/*.env
+
+# Build outputs
+**/dist/
+**/dist-ssr/
+**/build/
+**/out/
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory
+**/coverage/
+.nyc_output/
+
+# Optional cache directories
+.npm
+.eslintcache
+
+# OS metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# IDE & Editor specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.suo
+.project
+.settings/
+*.sln
+*.njsproj
+*.user
+*.userosscache
+*.sln.docstates
+
+# Local DB / Temp files
+backend/temp/
+frontend/temp/
+*.db
+*.sqlite
+
