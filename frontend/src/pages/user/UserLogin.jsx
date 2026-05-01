@@ -19,14 +19,14 @@ const UserLogin = () => {
     try {
       // In our backend, username can be email
       const data = await authAPI.login(credentials.email, credentials.password);
-      
+
       // Check role - if admin, reject
       if (data.user.role === 'Administrator') {
         throw new Error('Access Denied: Administrators must log in through the Admin Portal.');
       }
-      
+
       login(data.user, data.token);
-      
+
       Swal.fire({
         icon: 'success',
         title: 'Access Granted',
@@ -52,7 +52,7 @@ const UserLogin = () => {
 
       {/* Go Back */}
       <div className="px-8 -mt-4">
-        <button 
+        <button
           onClick={() => navigate('/')}
           className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors"
         >
@@ -79,12 +79,12 @@ const UserLogin = () => {
             {/* Email */}
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700 mb-2">Work Email</label>
-              <input 
-                type="email" 
+              <input
+                type="email"
                 placeholder="name@company.com"
                 className="w-full border border-gray-300 p-3 text-sm focus:outline-none focus:border-[#047857] transition-colors"
                 value={credentials.email}
-                onChange={(e) => setCredentials({...credentials, email: e.target.value})}
+                onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                 required
               />
             </div>
@@ -95,18 +95,18 @@ const UserLogin = () => {
                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700">Password</label>
                 <button type="button" className="text-[10px] font-bold text-[#047857] hover:underline uppercase tracking-widest">Forgot?</button>
               </div>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 placeholder="••••••••"
                 className="w-full border border-gray-300 p-3 text-sm focus:outline-none focus:border-[#047857] transition-colors"
                 value={credentials.password}
-                onChange={(e) => setCredentials({...credentials, password: e.target.value})}
+                onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                 required
               />
             </div>
 
             {/* Submit */}
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-[#047857] text-white p-4 text-xs font-black tracking-widest uppercase flex items-center justify-center gap-2 hover:bg-[#059669] transition-all disabled:opacity-70"
