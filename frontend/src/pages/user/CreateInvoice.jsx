@@ -154,8 +154,8 @@ const CreateInvoice = () => {
         </div>
       </div>
 
-      {/* Item Table */}
-      <div className="bg-white border border-gray-200">
+      {/* Line Items */}
+      <div className="bg-white border border-gray-200 shadow-sm relative">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50">
