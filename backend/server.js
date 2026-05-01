@@ -186,10 +186,10 @@ app.get('/api/user/dashboard/stats', auth, async (req, res) => {
             SELECT
                 (SELECT ISNULL(SUM(QuantityOnHand), 0) FROM Inventory) AS totalStock,
                 (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') AS activeOrders,
-                (SELECT COUNT(*) FROM Inventory WHERE Status != 'OPTIMAL') AS lowStockItems,
+                (SELECT COUNT(*) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID
+                    WHERE i.QuantityOnHand <= p.ReorderLevel) AS lowStockItems,
                 (SELECT ISNULL(SUM(TotalAmount), 0) FROM Invoices
-                    WHERE CAST(InvoiceDate AS DATE) = CAST(GETDATE() AS DATE)
-                      AND InvoiceStatus = 'Paid') AS revenueYTD
+                    WHERE CAST(InvoiceDate AS DATE) = CAST(GETDATE() AS DATE)) AS revenueYTD
         `);
         res.json(result.recordset[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -482,10 +482,23 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
                 VALUES (@iid, @pid, @qty, @price, @qty * @price)
             `);
 
+            // Deduct stock and recalculate Status in one step
             const sur = new sql.Request(transaction);
             sur.input('pid', sql.Int, item.productID);
             sur.input('qty', sql.Int, item.qty);
-            await sur.query('UPDATE Inventory SET QuantityOnHand = QuantityOnHand - @qty WHERE ProductID = @pid');
+            await sur.query(`
+                UPDATE i SET
+                    i.QuantityOnHand = i.QuantityOnHand - @qty,
+                    i.LastUpdated = GETDATE(),
+                    i.Status = CASE
+                        WHEN (i.QuantityOnHand - @qty) <= 0 THEN 'CRITICAL_SHORTAGE'
+                        WHEN (i.QuantityOnHand - @qty) <= p.ReorderLevel THEN 'REORDER_WARNING'
+                        ELSE 'OPTIMAL'
+                    END
+                FROM Inventory i
+                JOIN Products p ON i.ProductID = p.ProductID
+                WHERE i.ProductID = @pid
+            `);
         }
 
         await transaction.commit();
@@ -1000,19 +1013,7 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/user/dashboard/stats', auth, async (req, res) => {
-    try {
-        const db = await getPool();
-        const result = await db.request().query(`
-            SELECT 
-                (SELECT SUM(QuantityOnHand) FROM Inventory) as totalStock,
-                (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') as activeOrders,
-                (SELECT COUNT(*) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID WHERE i.QuantityOnHand <= p.ReorderLevel) as lowStockItems,
-                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceDate >= CAST(GETDATE() AS DATE)) as revenueYTD
-        `);
-        res.json(result.recordset[0]);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+// Duplicate /api/user/dashboard/stats removed - canonical route defined earlier
 
 // GET /api/user/dashboard/activity
 app.get('/api/user/dashboard/activity', auth, async (req, res) => {
@@ -1122,7 +1123,8 @@ app.get('/api/dashboard/stats', auth, async (req, res) => {
         const stats = await db.request().query(`
             SELECT
                 (SELECT COUNT(*) FROM Products WHERE IsActive = 1) AS totalSKUs,
-                (SELECT COUNT(*) FROM Inventory WHERE Status != 'OPTIMAL') AS lowStockAlerts,
+                (SELECT COUNT(*) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID
+                    WHERE i.QuantityOnHand <= p.ReorderLevel) AS lowStockAlerts,
                 (SELECT COUNT(*) FROM PurchaseOrders WHERE DATEDIFF(hour, OrderDate, GETDATE()) <= 24) AS recentOrders,
                 (SELECT COUNT(*) FROM Alerts WHERE IsRead = 0) AS unreadAlerts
         `);
@@ -1233,13 +1235,23 @@ app.get('/api/inventory', auth, async (req, res) => {
             WHERE p.IsActive = 1
               AND (p.ProductName LIKE @search OR p.SKU LIKE @search OR c.CategoryName LIKE @search)
               AND (@category = '' OR c.CategoryName = @category)
-              AND (@status = '' OR i.Status = @status)
+              AND (
+                @status = ''
+                OR (@status = 'OPTIMAL'           AND i.QuantityOnHand > p.ReorderLevel AND i.QuantityOnHand > 0)
+                OR (@status = 'REORDER_WARNING'   AND i.QuantityOnHand <= p.ReorderLevel AND i.QuantityOnHand > 0)
+                OR (@status = 'CRITICAL_SHORTAGE' AND i.QuantityOnHand <= 0)
+              )
         `);
 
         const result = await r.query(`
             SELECT p.ProductID, p.SKU, p.ProductName, c.CategoryName AS Category,
-                   i.QuantityOnHand AS Stock, p.UnitPrice, i.Status, w.WarehouseName,
-                   p.ReorderLevel, p.Description
+                   i.QuantityOnHand AS Stock, p.UnitPrice,
+                   CASE
+                       WHEN i.QuantityOnHand <= 0           THEN 'CRITICAL_SHORTAGE'
+                       WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING'
+                       ELSE 'OPTIMAL'
+                   END AS Status,
+                   w.WarehouseName, p.ReorderLevel, p.Description
             FROM Products p
             JOIN Inventory i   ON p.ProductID = i.ProductID
             JOIN Categories c  ON p.CategoryID = c.CategoryID
@@ -1247,7 +1259,12 @@ app.get('/api/inventory', auth, async (req, res) => {
             WHERE p.IsActive = 1
               AND (p.ProductName LIKE @search OR p.SKU LIKE @search OR c.CategoryName LIKE @search)
               AND (@category = '' OR c.CategoryName = @category)
-              AND (@status = '' OR i.Status = @status)
+              AND (
+                @status = ''
+                OR (@status = 'OPTIMAL'           AND i.QuantityOnHand > p.ReorderLevel AND i.QuantityOnHand > 0)
+                OR (@status = 'REORDER_WARNING'   AND i.QuantityOnHand <= p.ReorderLevel AND i.QuantityOnHand > 0)
+                OR (@status = 'CRITICAL_SHORTAGE' AND i.QuantityOnHand <= 0)
+              )
             ORDER BY p.ProductName
             OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
         `);
