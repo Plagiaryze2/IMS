@@ -646,30 +646,124 @@ app.patch('/api/purchase-orders/:id/status', auth, async (req, res) => {
 // WAREHOUSE & LOGISTICS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// GET /api/warehouses
+app.get('/api/warehouses', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName,
+                   COUNT(DISTINCT CASE WHEN i.QuantityOnHand > 0 THEN i.ProductID END) as totalSkus,
+                   ISNULL(SUM(CASE WHEN i.QuantityOnHand > 0 THEN i.QuantityOnHand ELSE 0 END), 0) as totalOccupancy
+            FROM Warehouses w
+            LEFT JOIN Inventory i ON w.WarehouseID = i.WarehouseID
+            GROUP BY w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName
+        `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/warehouse/inventory
 app.get('/api/warehouse/inventory', auth, async (req, res) => {
     try {
         const db = await getPool();
-        const { aisle } = req.query;
-        const result = await db.request()
-            .input('aisle', sql.NVarChar, aisle)
-            .query(`
-                SELECT p.SKU, p.ProductName, i.Shelf, i.Bin, i.QuantityOnHand
-                FROM Inventory i
-                JOIN Products p ON i.ProductID = p.ProductID
-                WHERE i.Aisle = @aisle
-            `);
+        const { aisle, warehouseId } = req.query;
+        let query = `
+            SELECT p.ProductID, p.SKU, p.ProductName, i.InventoryID, i.WarehouseID, i.Shelf, i.Bin, i.QuantityOnHand, i.Aisle
+            FROM Inventory i
+            JOIN Products p ON i.ProductID = p.ProductID
+            WHERE i.QuantityOnHand > 0
+        `;
+        if (aisle) query += ` AND i.Aisle = '${aisle}'`;
+        if (warehouseId) query += ` AND i.WarehouseID = ${warehouseId}`;
+        
+        const result = await db.request().query(query);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /api/warehouse/transfer
 app.post('/api/warehouse/transfer', auth, async (req, res) => {
-    const { productSKU, destination, qty } = req.body;
+    const { productId, sourceWarehouseId, destWarehouseId, qty, destAisle, destShelf, destBin } = req.body;
+    if (!productId || !sourceWarehouseId || !destWarehouseId || !qty || qty <= 0) {
+        return res.status(400).json({ error: 'Invalid transfer parameters' });
+    }
+    
+    if (sourceWarehouseId === destWarehouseId) {
+        return res.status(400).json({ error: 'Source and destination warehouses cannot be the same' });
+    }
+
+    const aisle = (destAisle && destAisle !== 'TBD') ? destAisle : null;
+    const shelf = destShelf || null;
+    const bin = destBin || null;
+    const aisleForInsert = destAisle || 'TBD';
+    const transaction = new sql.Transaction(await getPool());
     try {
-        await addLog('SYNC', `Transferred ${qty} of ${productSKU} to ${destination}.`, req.user.userID);
+        await transaction.begin();
+        
+        // 1. Check source stock
+        const checkReq = new sql.Request(transaction);
+        checkReq.input('pid', sql.Int, productId);
+        checkReq.input('swid', sql.Int, sourceWarehouseId);
+        const sourceCheck = await checkReq.query(`SELECT QuantityOnHand, InventoryID FROM Inventory WHERE ProductID = @pid AND WarehouseID = @swid`);
+        
+        if (sourceCheck.recordset.length === 0 || sourceCheck.recordset[0].QuantityOnHand < qty) {
+            throw new Error('Insufficient stock in source warehouse');
+        }
+
+        // 2. Decrement Source
+        const decReq = new sql.Request(transaction);
+        decReq.input('pid', sql.Int, productId);
+        decReq.input('swid', sql.Int, sourceWarehouseId);
+        decReq.input('qty', sql.Int, qty);
+        await decReq.query(`UPDATE Inventory SET QuantityOnHand = QuantityOnHand - @qty WHERE ProductID = @pid AND WarehouseID = @swid`);
+
+        // 3. Increment or Insert Destination (with location assignment)
+        const incReq = new sql.Request(transaction);
+        incReq.input('pid', sql.Int, productId);
+        incReq.input('dwid', sql.Int, destWarehouseId);
+        incReq.input('qty', sql.Int, qty);
+        incReq.input('aisle', sql.NVarChar, aisle);
+        incReq.input('aisleInsert', sql.NVarChar, aisleForInsert);
+        incReq.input('shelf', sql.NVarChar, shelf);
+        incReq.input('bin', sql.NVarChar, bin);
+        const destCheck = await incReq.query(`SELECT InventoryID FROM Inventory WHERE ProductID = @pid AND WarehouseID = @dwid`);
+        
+        if (destCheck.recordset.length > 0) {
+            // Always prefer user-entered values; fall back to existing values if blank
+            await incReq.query(`
+                UPDATE Inventory SET 
+                    QuantityOnHand = QuantityOnHand + @qty,
+                    Aisle = COALESCE(@aisle, Aisle),
+                    Shelf = COALESCE(@shelf, Shelf),
+                    Bin = COALESCE(@bin, Bin)
+                WHERE ProductID = @pid AND WarehouseID = @dwid
+            `);
+        } else {
+            await incReq.query(`INSERT INTO Inventory (ProductID, WarehouseID, QuantityOnHand, Status, Aisle, Shelf, Bin) VALUES (@pid, @dwid, @qty, 'Available', @aisleInsert, @shelf, @bin)`);
+        }
+
+        // 4. Log Transaction
+        const logReq = new sql.Request(transaction);
+        logReq.input('pid', sql.Int, productId);
+        logReq.input('swid', sql.Int, sourceWarehouseId);
+        logReq.input('dwid', sql.Int, destWarehouseId);
+        logReq.input('qty', sql.Int, qty);
+        logReq.input('uid', sql.Int, req.user.userID);
+        await logReq.query(`
+            INSERT INTO InventoryTransactions (ProductID, WarehouseID, ReferenceType, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks)
+            VALUES (@pid, @swid, 'Manual', 'OUT', @qty, GETDATE(), @uid, 'Transfer to WH' + CAST(@dwid AS VARCHAR));
+            
+            INSERT INTO InventoryTransactions (ProductID, WarehouseID, ReferenceType, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks)
+            VALUES (@pid, @dwid, 'Manual', 'IN', @qty, GETDATE(), @uid, 'Transfer from WH' + CAST(@swid AS VARCHAR));
+        `);
+
+        await transaction.commit();
+        await addLog('WAREHOUSE', `Transferred ${qty} units of Product ${productId} from WH ${sourceWarehouseId} to WH ${destWarehouseId}.`, req.user.userID);
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        await transaction.rollback();
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

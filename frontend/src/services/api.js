@@ -92,7 +92,8 @@ export const procurementAPI = {
 
 // ─── Warehouse ────────────────────────────────────────────────────────────
 export const warehouseAPI = {
-  getInventoryByAisle: (aisle) => request(`/warehouse/inventory?aisle=${aisle}`),
+  getWarehouses: () => request('/warehouses'),
+  getInventory: (params) => request(`/warehouse/inventory?warehouseId=${params?.warehouseId || ''}&aisle=${params?.aisle || ''}`),
   transfer: (data) => request('/warehouse/transfer', { method: 'POST', body: data }),
 };
 
