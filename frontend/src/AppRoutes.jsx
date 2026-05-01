@@ -5,6 +5,7 @@ import Dashboard from './pages/admin/Dashboard/Dashboard';
 import Inventory from './pages/admin/Inventory/Inventory';
 import Users from './pages/admin/Users/Users';
 import Login from './pages/admin/Login/Login';
+import ResetPassword from './pages/admin/Login/ResetPassword';
 import AlertsCenter from './pages/admin/Alerts/AlertsCenter';
 import { useAuth, AuthProvider } from './context/AuthContext';
 
@@ -47,6 +48,10 @@ const AdminProtectedRoute = ({ children }) => {
     return <Navigate to="/user/dashboard" replace />;
   }
 
+  if (user.requirePasswordChange && location.pathname !== '/reset-password') {
+    return <Navigate to="/reset-password" replace />;
+  }
+
   return children;
 };
 
@@ -73,54 +78,68 @@ const UserProtectedRoute = ({ children }) => {
     return <Navigate to="/dashboard" replace />;
   }
 
+  if (user.requirePasswordChange && location.pathname !== '/reset-password') {
+    return <Navigate to="/reset-password" replace />;
+  }
+
   return children;
 };
 
 
+const AppContent = () => {
+  const { user } = useAuth();
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<UserLogin />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/admin-login" element={<Login />} />
+      <Route path="/reset-password" element={
+        user ? <ResetPassword /> : <Navigate to="/admin-login" replace />
+      } />
+      
+      {/* Admin Interface */}
+      <Route element={
+        <AdminProtectedRoute>
+          <Layout />
+        </AdminProtectedRoute>
+      }>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/inventory" element={<Inventory />} />
+        <Route path="/users" element={<Users />} />
+        <Route path="/alerts" element={<AlertsCenter />} />
+        <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+
+      {/* User Interface */}
+      <Route element={
+        <UserProtectedRoute>
+          <UserLayout />
+        </UserProtectedRoute>
+      }>
+        <Route path="/user/dashboard" element={<UserDashboard />} />
+        <Route path="/user/inventory" element={<UserInventory />} />
+        <Route path="/user/inventory/add" element={<AddProduct />} />
+        <Route path="/user/suppliers" element={<UserSuppliers />} />
+        <Route path="/user/orders" element={<UserOrders />} />
+        <Route path="/user/sales" element={<UserSales />} />
+        <Route path="/user/sales/create" element={<CreateInvoice />} />
+        <Route path="/user/warehouse" element={<UserWarehouse />} />
+        <Route path="/user/reports" element={<UserReports />} />
+        <Route path="/user/tracking" element={<UserTracking />} />
+        <Route path="/user/alerts" element={<UserAlerts />} />
+        <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
+      </Route>
+      
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
+
 const AppRoutes = () => {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<UserLogin />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/admin-login" element={<Login />} />
-        
-        {/* Admin Interface */}
-        <Route element={
-          <AdminProtectedRoute>
-            <Layout />
-          </AdminProtectedRoute>
-        }>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/inventory" element={<Inventory />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/alerts" element={<AlertsCenter />} />
-          <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
-        </Route>
-
-        {/* User Interface */}
-        <Route element={
-          <UserProtectedRoute>
-            <UserLayout />
-          </UserProtectedRoute>
-        }>
-          <Route path="/user/dashboard" element={<UserDashboard />} />
-          <Route path="/user/inventory" element={<UserInventory />} />
-          <Route path="/user/inventory/add" element={<AddProduct />} />
-          <Route path="/user/suppliers" element={<UserSuppliers />} />
-          <Route path="/user/orders" element={<UserOrders />} />
-          <Route path="/user/sales" element={<UserSales />} />
-          <Route path="/user/sales/create" element={<CreateInvoice />} />
-          <Route path="/user/warehouse" element={<UserWarehouse />} />
-          <Route path="/user/reports" element={<UserReports />} />
-          <Route path="/user/tracking" element={<UserTracking />} />
-          <Route path="/user/alerts" element={<UserAlerts />} />
-          <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
-        </Route>
-        
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppContent />
     </AuthProvider>
   );
 };
