@@ -72,10 +72,14 @@ app.post('/api/auth/login', async (req, res) => {
             FROM Users u
             LEFT JOIN UserRoles ur ON u.UserID = ur.UserID
             LEFT JOIN Roles ro ON ur.RoleID = ro.RoleID
-            WHERE (u.Username = @username OR u.Email = @username) AND u.IsActive = 1
+            WHERE (u.Username = @username OR u.Email = @username)
         `);
         if (result.recordset.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
         const user = result.recordset[0];
+
+        if (!user.IsActive) {
+            return res.status(401).json({ error: 'admin has disabled account' });
+        }
 
         // Support plain-text passwords in dev (existing DB has unhashed passwords)
         const valid = user.PasswordHash === password || await bcrypt.compare(password, user.PasswordHash).catch(() => false);
@@ -141,6 +145,28 @@ app.post('/api/auth/register', async (req, res) => {
         await addLog('USER', `New user "${email}" registered.`, userId);
 
         res.json({ message: 'Registration successful', userId });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/auth/change-password
+app.post('/api/auth/change-password', auth, async (req, res) => {
+    const { newPassword } = req.body;
+    if (!newPassword) return res.status(400).json({ error: 'New password is required' });
+
+    try {
+        const db = await getPool();
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        
+        await db.request()
+            .input('uid', sql.Int, req.user.userID)
+            .input('ph', sql.NVarChar, hashedPassword)
+            .query('UPDATE Users SET PasswordHash = @ph, RequirePasswordChange = 0 WHERE UserID = @uid');
+
+        await addLog('USER', `User "${req.user.username}" changed their password.`, req.user.userID);
+        res.json({ success: true, message: 'Password changed successfully' });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: e.message });
@@ -1476,9 +1502,14 @@ app.post('/api/users', auth, async (req, res) => {
 // PUT /api/users/:id/toggle  — Activate / Deactivate
 app.put('/api/users/:id/toggle', auth, async (req, res) => {
     try {
+        const targetId = parseInt(req.params.id);
+        if (targetId === parseInt(req.user.userID)) {
+            return res.status(400).json({ error: 'You cannot disable your own account.' });
+        }
+
         const db = await getPool();
         const r = db.request();
-        r.input('uid', sql.Int, parseInt(req.params.id));
+        r.input('uid', sql.Int, targetId);
         const result = await r.query('UPDATE Users SET IsActive = 1 - IsActive OUTPUT INSERTED.IsActive WHERE UserID = @uid');
         res.json({ isActive: result.recordset[0].IsActive });
     } catch (e) { res.status(500).json({ error: e.message }); }

@@ -37,6 +37,8 @@ export const authAPI = {
     request('/auth/login', { method: 'POST', body: { username, password } }),
   register: (data) =>
     request('/auth/register', { method: 'POST', body: data }),
+  changePassword: (newPassword) =>
+    request('/auth/change-password', { method: 'POST', body: { newPassword } }),
 };
 
 
