@@ -19,8 +19,11 @@ import UserSuppliers from './pages/user/UserSuppliers';
 import UserOrders from './pages/user/UserOrders';
 import UserSales from './pages/user/UserSales';
 import CreateInvoice from './pages/user/CreateInvoice';
+import UserWarehouse from './pages/user/UserWarehouse';
+import UserReports from './pages/user/UserReports';
+import UserTracking from './pages/user/UserTracking';
 
-const ProtectedRoute = ({ children }) => {
+const AdminProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -29,20 +32,41 @@ const ProtectedRoute = ({ children }) => {
       <div className="h-screen w-screen flex items-center justify-center bg-[#fafafa]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-[#047857] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Verifying Session...</p>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Verifying Admin Session...</p>
         </div>
       </div>
     );
   }
 
-
-  if (!user) {
-    // Redirect to admin login if they were trying to access admin area
+  if (!user || user.role === 'User') {
     return <Navigate to="/admin-login" state={{ from: location }} replace />;
   }
 
   return children;
 };
+
+const UserProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#fafafa]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#047857] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Verifying User Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
 
 const AppRoutes = () => {
   return (
@@ -55,9 +79,9 @@ const AppRoutes = () => {
         
         {/* Admin Interface */}
         <Route element={
-          <ProtectedRoute>
+          <AdminProtectedRoute>
             <Layout />
-          </ProtectedRoute>
+          </AdminProtectedRoute>
         }>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/inventory" element={<Inventory />} />
@@ -68,9 +92,9 @@ const AppRoutes = () => {
 
         {/* User Interface */}
         <Route element={
-          <ProtectedRoute>
+          <UserProtectedRoute>
             <UserLayout />
-          </ProtectedRoute>
+          </UserProtectedRoute>
         }>
           <Route path="/user/dashboard" element={<UserDashboard />} />
           <Route path="/user/inventory" element={<UserInventory />} />
@@ -79,6 +103,9 @@ const AppRoutes = () => {
           <Route path="/user/orders" element={<UserOrders />} />
           <Route path="/user/sales" element={<UserSales />} />
           <Route path="/user/sales/create" element={<CreateInvoice />} />
+          <Route path="/user/warehouse" element={<UserWarehouse />} />
+          <Route path="/user/reports" element={<UserReports />} />
+          <Route path="/user/tracking" element={<UserTracking />} />
           <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
         </Route>
         

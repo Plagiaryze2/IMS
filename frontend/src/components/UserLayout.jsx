@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -13,17 +13,54 @@ import {
   LogOut,
   Bell,
   User as UserIcon,
-  Search
+  Search,
+  TriangleAlert,
+  CheckCircle,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { alertsAPI } from '../services/api';
 
 const UserLayout = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [alerts, setAlerts] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef(null);
+
+  useEffect(() => {
+    const fetchAlerts = async () => {
+      try {
+        const data = await alertsAPI.getAll();
+        // Filter only STOCK notifications
+        const stockAlerts = data.filter(a => a.Category === 'STOCK');
+        setAlerts(stockAlerts);
+      } catch (e) {
+        console.error('Failed to fetch alerts:', e);
+      }
+    };
+    fetchAlerts();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchAlerts, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const unreadCount = alerts.filter(a => !a.IsRead).length;
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate('/');
   };
 
   const navItems = [
@@ -58,10 +95,62 @@ const UserLayout = () => {
         </div>
 
         <div className="flex items-center gap-6">
-          <button className="relative p-2 text-gray-400 hover:text-gray-900 transition-colors">
-            <Bell size={20} />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
+          {/* Notification Bell */}
+          <div className="relative" ref={notificationRef}>
+            <button 
+              onClick={() => setShowNotifications(!showNotifications)}
+              className={`relative p-2 transition-colors ${showNotifications ? 'text-gray-900' : 'text-gray-400 hover:text-gray-900'}`}
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute top-2 right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center text-[8px] font-black text-white">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notifications Dropdown */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 shadow-2xl z-[60] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-900">Stock Notifications</h4>
+                  <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-900 transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="max-h-[400px] overflow-y-auto">
+                  {alerts.length === 0 ? (
+                    <div className="p-12 text-center">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">No active alerts</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {alerts.map((alert) => (
+                        <div key={alert.AlertID} className={`p-4 hover:bg-gray-50 transition-colors ${!alert.IsRead ? 'bg-green-50/30' : ''}`}>
+                          <div className="flex gap-4">
+                            <div className={`mt-0.5 p-1.5 border ${alert.AlertType === 'CRITICAL_THRESHOLD' ? 'border-red-200 bg-red-50 text-red-500' : 'border-emerald-200 bg-emerald-50 text-emerald-500'}`}>
+                              {alert.AlertType === 'CRITICAL_THRESHOLD' ? <TriangleAlert size={14} /> : <CheckCircle size={14} />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-start mb-1">
+                                <p className="text-[10px] font-black text-gray-900 uppercase">{alert.Title}</p>
+                                <span className="text-[8px] font-mono text-gray-400">{new Date(alert.CreatedAt).toLocaleDateString()}</span>
+                              </div>
+                              <p className="text-[11px] text-gray-600 leading-relaxed line-clamp-2">{alert.Description}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="p-4 border-t border-gray-100 text-center">
+                  <button className="text-[10px] font-black text-[#047857] uppercase tracking-widest hover:underline">View All Alerts</button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
             <div className="text-right">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-900">{user?.username || 'OPERATOR_01'}</p>
@@ -131,5 +220,6 @@ const UserLayout = () => {
     </div>
   );
 };
+
 
 export default UserLayout;

@@ -9,7 +9,7 @@ const Layout = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/admin-login');
+    navigate('/');
   };
 
   const navItems = [
