@@ -30,15 +30,49 @@ const AddProduct = () => {
     alertLevel: '10'
   });
 
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    const fetchCats = async () => {
+      try {
+        const data = await inventoryAPI.getCategories();
+        setCategories(data);
+      } catch (err) {
+        console.error('Failed to fetch categories:', err);
+      }
+    };
+    fetchCats();
+  }, []);
+
+  const generateSKU = () => {
+    const prefix = formData.category ? formData.category.substring(0, 3).toUpperCase() : 'SKU';
+    const random = Math.floor(1000 + Math.random() * 9000);
+    setFormData({ ...formData, sku: `${prefix}-${random}` });
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!formData.category) return Swal.fire('Error', 'Please select a category', 'error');
+    
     setLoading(true);
     try {
-      // Logic for saving to backend would go here
-      // Reusing inventoryAPI.create if available
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate
+      const payload = {
+        sku: formData.sku === 'AUTO-GEN-PENDING' ? `SKU-${Math.floor(1000 + Math.random() * 9000)}` : formData.sku,
+        productName: formData.name,
+        categoryID: formData.category,
+        unitPrice: parseFloat(formData.sellingPrice),
+        costPrice: parseFloat(formData.unitCost),
+        reorderLevel: parseInt(formData.alertLevel),
+        stock: parseInt(formData.initialQty),
+        description: formData.description,
+        brand: formData.brand,
+        barcode: formData.barcode,
+        taxRate: parseFloat(formData.taxRate)
+      };
+
+      await inventoryAPI.create(payload);
+      
       await Swal.fire({
         icon: 'success',
         title: 'Product Registered',
@@ -95,11 +129,12 @@ const AddProduct = () => {
                     className="w-full border-b-2 border-gray-200 p-2 text-sm font-bold bg-white focus:outline-none focus:border-[#047857] transition-colors"
                     value={formData.category}
                     onChange={e => setFormData({...formData, category: e.target.value})}
+                    required
                   >
                     <option value="">SELECT_CLASSIFICATION</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="hardware">Hardware</option>
-                    <option value="consumables">Consumables</option>
+                    {categories.map(cat => (
+                      <option key={cat.CategoryID} value={cat.CategoryID}>{cat.CategoryName}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -139,9 +174,15 @@ const AddProduct = () => {
                     type="text" 
                     className="flex-1 border-b-2 border-gray-200 p-2 text-sm font-mono font-bold focus:outline-none focus:border-[#047857] transition-colors"
                     value={formData.sku}
-                    readOnly
+                    onChange={e => setFormData({...formData, sku: e.target.value})}
                   />
-                  <button type="button" className="bg-gray-100 px-4 py-2 text-[10px] font-black tracking-widest uppercase hover:bg-gray-200 transition-colors">Generate</button>
+                  <button 
+                    type="button" 
+                    onClick={generateSKU}
+                    className="bg-gray-100 px-4 py-2 text-[10px] font-black tracking-widest uppercase hover:bg-gray-200 transition-colors"
+                  >
+                    Generate
+                  </button>
                 </div>
               </div>
               <div>
