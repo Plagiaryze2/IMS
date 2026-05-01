@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowRightLeft, 
   Plus, 
@@ -8,11 +8,45 @@ import {
   Thermometer,
   Search,
   ArrowRight,
-  ChevronDown
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
+import { warehouseAPI } from '../../services/api';
+import Swal from 'sweetalert2';
 
 const UserWarehouse = () => {
-  const [selectedAisle, setSelectedAisle] = useState('A2');
+  const [selectedAisle, setSelectedAisle] = useState('A1');
+  const [aisleProducts, setAisleProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [transferData, setTransferData] = useState({ sku: '', dest: '', qty: 100 });
+
+  useEffect(() => {
+    const fetchAisleData = async () => {
+      setLoading(true);
+      try {
+        const data = await warehouseAPI.getInventoryByAisle(selectedAisle);
+        setAisleProducts(data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAisleData();
+  }, [selectedAisle]);
+
+  const handleTransfer = async () => {
+    if (!transferData.sku || !transferData.dest) {
+      Swal.fire('Error', 'Please enter SKU and destination.', 'error');
+      return;
+    }
+    try {
+      await warehouseAPI.transfer(transferData);
+      Swal.fire('Success', 'Transfer logged in system.', 'success');
+    } catch (e) {
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
 
   const warehouses = [
     { name: 'Main Warehouse', type: 'AMBIENT', occupancy: 82, skus: '12,450', color: '#047857' },
@@ -21,12 +55,6 @@ const UserWarehouse = () => {
   ];
 
   const aisles = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'];
-
-  const aisleProducts = [
-    { sku: 'PRD-8821', name: 'Titanium Widget X1', shelf: '12', bin: '04-B', stock: '1,240' },
-    { sku: 'PRD-3390', name: 'Carbon Fiber Casing', shelf: '11', bin: '12-A', stock: '450' },
-    { sku: 'PRD-1022', name: 'Polymer Gasket Ring', shelf: '13', bin: '01-C', stock: '12' },
-  ];
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
@@ -97,37 +125,44 @@ const UserWarehouse = () => {
           </div>
 
           {/* Products Table */}
-          <div className="bg-white border border-gray-200">
+          <div className="bg-white border border-gray-200 min-h-[300px]">
             <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Products in Selected Aisle: {selectedAisle}</h3>
-               <span className="text-[9px] font-mono font-bold text-gray-400 uppercase">14 Results</span>
+               <span className="text-[9px] font-mono font-bold text-gray-400 uppercase">{aisleProducts.length} Results</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">
-                    <th className="px-6 py-4">SKU</th>
-                    <th className="px-6 py-4">Product Name</th>
-                    <th className="px-6 py-4">Shelf</th>
-                    <th className="px-6 py-4">Bin</th>
-                    <th className="px-6 py-4">Current Stock</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-mono">
-                  {aisleProducts.map((p) => (
-                    <tr key={p.sku} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-5 text-xs font-bold text-gray-400">{p.sku}</td>
-                      <td className="px-6 py-5 text-xs font-black text-gray-900 font-sans">{p.name}</td>
-                      <td className="px-6 py-5 text-xs font-bold text-gray-600">{p.shelf}</td>
-                      <td className="px-6 py-5 text-xs font-bold text-gray-600">{p.bin}</td>
-                      <td className="px-6 py-5 text-xs font-black text-gray-900">
-                        <span className={p.stock === '12' ? 'text-red-500' : ''}>{p.stock}</span>
-                      </td>
+            {loading ? (
+              <div className="flex items-center justify-center h-64"><Loader2 className="animate-spin text-[#047857]" /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                      <th className="px-6 py-4">SKU</th>
+                      <th className="px-6 py-4">Product Name</th>
+                      <th className="px-6 py-4">Shelf</th>
+                      <th className="px-6 py-4">Bin</th>
+                      <th className="px-6 py-4">Current Stock</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-mono">
+                    {aisleProducts.map((p) => (
+                      <tr key={p.SKU} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-5 text-xs font-bold text-gray-400">{p.SKU}</td>
+                        <td className="px-6 py-5 text-xs font-black text-gray-900 font-sans">{p.ProductName}</td>
+                        <td className="px-6 py-5 text-xs font-bold text-gray-600">{p.Shelf}</td>
+                        <td className="px-6 py-5 text-xs font-bold text-gray-600">{p.Bin}</td>
+                        <td className="px-6 py-5 text-xs font-black text-gray-900">
+                          {p.QuantityOnHand}
+                        </td>
+                      </tr>
+                    ))}
+                    {aisleProducts.length === 0 && (
+                      <tr><td colSpan="5" className="px-6 py-10 text-center text-[10px] font-black uppercase text-gray-300">No items found in this aisle</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
@@ -149,22 +184,28 @@ const UserWarehouse = () => {
             <div className="space-y-4">
               <label className="block text-[10px] font-black uppercase tracking-widest text-white/50">Destination Location</label>
               <div className="relative">
-                <select className="w-full bg-transparent border-b-2 border-white/20 py-2 text-sm font-bold focus:outline-none focus:border-white appearance-none cursor-pointer">
-                  <option className="text-black">Select Facility / Bin</option>
-                  <option className="text-black">Retail Storefront</option>
-                  <option className="text-black">Overflow Container</option>
+                <select 
+                  value={transferData.dest}
+                  onChange={(e) => setTransferData({...transferData, dest: e.target.value})}
+                  className="w-full bg-transparent border-b-2 border-white/20 py-2 text-sm font-bold focus:outline-none focus:border-white appearance-none cursor-pointer"
+                >
+                  <option className="text-black" value="">Select Facility</option>
+                  <option className="text-black" value="Storefront">Retail Storefront</option>
+                  <option className="text-black" value="Overflow">Overflow Container</option>
                 </select>
                 <ChevronDown size={14} className="absolute right-0 top-3 text-white/40 pointer-events-none" />
               </div>
             </div>
 
             <div className="space-y-4">
-              <label className="block text-[10px] font-black uppercase tracking-widest text-white/50">Product Search</label>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-white/50">Product SKU</label>
               <div className="relative border-b-2 border-white/20 pb-2">
                 <Search size={14} className="absolute left-0 top-1 text-white/40" />
                 <input 
                   type="text" 
-                  placeholder="SKU or Name"
+                  placeholder="SKU"
+                  value={transferData.sku}
+                  onChange={(e) => setTransferData({...transferData, sku: e.target.value})}
                   className="w-full pl-6 bg-transparent text-sm font-bold focus:outline-none placeholder:text-white/20"
                 />
               </div>
@@ -174,12 +215,16 @@ const UserWarehouse = () => {
               <label className="block text-[10px] font-black uppercase tracking-widest text-white/50">Quantity</label>
               <input 
                 type="number" 
-                defaultValue="100"
+                value={transferData.qty}
+                onChange={(e) => setTransferData({...transferData, qty: parseInt(e.target.value) || 0})}
                 className="w-full bg-white/10 border border-white/20 p-4 text-xl font-bold focus:outline-none focus:border-white"
               />
             </div>
 
-            <button className="w-full py-5 bg-white text-[#047857] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-100 transition-all mt-4 flex items-center justify-center gap-2">
+            <button 
+              onClick={handleTransfer}
+              className="w-full py-5 bg-white text-[#047857] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-100 transition-all mt-4 flex items-center justify-center gap-2"
+            >
               Confirm Transfer <ArrowRight size={14} />
             </button>
           </div>

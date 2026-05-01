@@ -148,6 +148,320 @@ app.post('/api/auth/register', async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// USER PORTAL - DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/user/dashboard/stats
+app.get('/api/user/dashboard/stats', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT
+                (SELECT COUNT(*) FROM PurchaseOrders WHERE Status IN ('Pending', 'Approved', 'Partially Received')) AS activeShipments,
+                (SELECT COUNT(*) FROM Invoices WHERE InvoiceStatus IN ('Unpaid', 'Partially Paid')) AS pendingInvoices,
+                (SELECT COUNT(*) FROM Inventory WHERE Status != 'OPTIMAL') AS lowStockItems,
+                (SELECT SUM(p.UnitPrice * i.QuantityOnHand) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS totalValue
+        `);
+        res.json(result.recordset[0]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/user/dashboard/activity
+app.get('/api/user/dashboard/activity', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT TOP 10 
+                FORMAT(sl.CreatedAt, 'HH:mm:ss') AS time,
+                'EVT-' + CAST(sl.LogID AS NVARCHAR) AS id,
+                sl.Message AS [desc],
+                COALESCE(u.FullName, 'SYSTEM') AS op,
+                sl.LogType AS status
+            FROM SystemLogs sl
+            LEFT JOIN Users u ON sl.UserID = u.UserID
+            ORDER BY sl.CreatedAt DESC
+        `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CUSTOMERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/customers
+app.get('/api/customers', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query('SELECT CustomerID, CustomerName, Address FROM Customers ORDER BY CustomerName');
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SALES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/sales/invoices
+app.get('/api/sales/invoices', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const { search, status } = req.query;
+        let query = `
+            SELECT i.InvoiceID, i.InvoiceDate, i.TotalAmount, i.InvoiceStatus, c.CustomerName
+            FROM Invoices i
+            JOIN Customers c ON i.CustomerID = c.CustomerID
+            WHERE 1=1
+        `;
+        if (search) query += ` AND (i.InvoiceID LIKE '%${search}%' OR c.CustomerName LIKE '%${search}%')`;
+        if (status && status !== 'ALL') query += ` AND i.InvoiceStatus = '${status}'`;
+        query += ' ORDER BY i.InvoiceDate DESC';
+        
+        const result = await db.request().query(query);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/shipments
+app.get('/api/shipments', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT so.SalesOrderID as id, c.CustomerName as customer, 'GLOBAL LOGISTICS' as carrier, 
+                   so.Status as status, 'Warehouse A' as location, 
+                   CONVERT(VARCHAR, DATEADD(day, 5, so.OrderDate), 104) as delivery
+            FROM SalesOrders so
+            JOIN Customers c ON so.CustomerID = c.CustomerID
+            ORDER BY so.OrderDate DESC
+        `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/sales/invoice
+app.post('/api/sales/invoice', auth, async (req, res) => {
+    const { customerID, items, status = 'Unpaid', dueDate } = req.body;
+    if (!customerID || !items || items.length === 0) return res.status(400).json({ error: 'Missing customer or items' });
+
+    const transaction = new sql.Transaction(await getPool());
+    try {
+        await transaction.begin();
+        const r = new sql.Request(transaction);
+
+        // 1. Calculate total
+        const total = items.reduce((acc, item) => acc + (item.qty * item.price), 0);
+
+        // 2. Create Sales Order
+        r.input('cid', sql.Int, customerID);
+        r.input('uid', sql.Int, req.user.userID);
+        r.input('total', sql.Decimal(18,2), total);
+        const soRes = await r.query(`
+            INSERT INTO SalesOrders (CustomerID, CreatedByUserID, OrderDate, Status, TotalAmount, ShippingAddress)
+            OUTPUT INSERTED.SalesOrderID
+            VALUES (@cid, @uid, GETDATE(), 'Pending', @total, 'Default Shipping')
+        `);
+        const salesOrderID = soRes.recordset[0].SalesOrderID;
+
+        // 3. Create Invoice
+        const ir = new sql.Request(transaction);
+        ir.input('soid', sql.Int, salesOrderID);
+        ir.input('cid', sql.Int, customerID);
+        ir.input('total', sql.Decimal(18,2), total);
+        ir.input('status', sql.NVarChar, status);
+        ir.input('due', sql.DateTime, dueDate || new Date(Date.now() + 7*24*60*60*1000));
+        const invRes = await ir.query(`
+            INSERT INTO Invoices (SalesOrderID, CustomerID, TotalAmount, InvoiceStatus, DueDate, InvoiceDate)
+            OUTPUT INSERTED.InvoiceID
+            VALUES (@soid, @cid, @total, @status, @due, GETDATE())
+        `);
+        const invoiceID = invRes.recordset[0].InvoiceID;
+
+        // 4. Create items and update inventory
+        for (const item of items) {
+            const itr = new sql.Request(transaction);
+            itr.input('iid', sql.Int, invoiceID);
+            itr.input('pid', sql.Int, item.productID);
+            itr.input('qty', sql.Int, item.qty);
+            itr.input('price', sql.Decimal(18,2), item.price);
+            await itr.query(`
+                INSERT INTO InvoiceItems (InvoiceID, ProductID, Quantity, UnitPrice, SubTotal)
+                VALUES (@iid, @pid, @qty, @price, @qty * @price)
+            `);
+
+            // Update Stock
+            const sur = new sql.Request(transaction);
+            sur.input('pid', sql.Int, item.productID);
+            sur.input('qty', sql.Int, item.qty);
+            await sur.query('UPDATE Inventory SET QuantityOnHand = QuantityOnHand - @qty WHERE ProductID = @pid');
+        }
+
+        await transaction.commit();
+        await addLog('SYNC', `New Invoice #${invoiceID} posted for Customer #${customerID}.`, req.user.userID);
+        res.status(201).json({ success: true, invoiceID });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUPPLIERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/suppliers
+app.get('/api/suppliers', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query('SELECT SupplierID, SupplierName, ContactName, Phone FROM Suppliers ORDER BY SupplierName');
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PURCHASE ORDERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/purchase-orders
+app.post('/api/purchase-orders', auth, async (req, res) => {
+    const { supplierID, items, totalAmount } = req.body;
+    if (!supplierID || !items || items.length === 0) return res.status(400).json({ error: 'Missing supplier or items' });
+
+    const transaction = new sql.Transaction(await getPool());
+    try {
+        await transaction.begin();
+        const r = new sql.Request(transaction);
+
+        // 1. Create Purchase Order
+        r.input('sid', sql.Int, supplierID);
+        r.input('uid', sql.Int, req.user.userID);
+        r.input('total', sql.Decimal(18,2), totalAmount);
+        const poRes = await r.query(`
+            INSERT INTO PurchaseOrders (SupplierID, OrderDate, TotalAmount, Status, OrderedByUserID, WarehouseID)
+            OUTPUT INSERTED.PurchaseOrderID
+            VALUES (@sid, GETDATE(), @total, 'Pending', @uid, 1)
+        `);
+        const poID = poRes.recordset[0].PurchaseOrderID;
+
+        // 2. Create Order Details
+        for (const item of items) {
+            const dr = new sql.Request(transaction);
+            dr.input('poid', sql.Int, poID);
+            dr.input('pid', sql.Int, item.productID);
+            dr.input('qty', sql.Int, item.qty);
+            dr.input('cost', sql.Decimal(18,2), item.price);
+            await dr.query(`
+                INSERT INTO PurchaseOrderDetails (PurchaseOrderID, ProductID, Quantity, UnitCost, SubTotal)
+                VALUES (@poid, @pid, @qty, @cost, @qty * @cost)
+            `);
+        }
+
+        await transaction.commit();
+        await addLog('SYNC', `New PO #${poID} issued to Supplier #${supplierID}.`, req.user.userID);
+        res.status(201).json({ success: true, poID });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WAREHOUSE & LOGISTICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/warehouse/inventory
+app.get('/api/warehouse/inventory', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const { aisle } = req.query;
+        const result = await db.request()
+            .input('aisle', sql.NVarChar, aisle)
+            .query(`
+                SELECT p.SKU, p.ProductName, i.Shelf, i.Bin, i.QuantityOnHand
+                FROM Inventory i
+                JOIN Products p ON i.ProductID = p.ProductID
+                WHERE i.Aisle = @aisle
+            `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/warehouse/transfer
+app.post('/api/warehouse/transfer', auth, async (req, res) => {
+    const { productSKU, destination, qty } = req.body;
+    try {
+        await addLog('SYNC', `Transferred ${qty} of ${productSKU} to ${destination}.`, req.user.userID);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/user/dashboard/stats', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT 
+                (SELECT SUM(QuantityOnHand) FROM Inventory) as totalStock,
+                (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') as activeOrders,
+                (SELECT COUNT(*) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID WHERE i.QuantityOnHand <= p.ReorderLevel) as lowStockItems,
+                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceDate >= CAST(GETDATE() AS DATE)) as revenueYTD
+        `);
+        res.json(result.recordset[0]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/user/dashboard/activity', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT TOP 10 
+                CONVERT(VARCHAR, Timestamp, 108) as time,
+                'EVT-' + CAST(LogID AS VARCHAR) as id,
+                Action as [desc],
+                u.Username as op,
+                CASE WHEN ActionType = 'SYNC' THEN 'SYNC' WHEN ActionType = 'ERROR' THEN 'ERR' ELSE 'INFO' END as status
+            FROM SystemLogs l
+            LEFT JOIN Users u ON l.UserID = u.UserID
+            ORDER BY Timestamp DESC
+        `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANALYTICS & REPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/user/reports/stats', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT
+                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceStatus = 'Paid') AS totalRevenue,
+                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceStatus = 'Unpaid') AS pendingRevenue,
+                (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') AS activeOrders,
+                (SELECT SUM(p.UnitPrice * i.QuantityOnHand) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS inventoryValue
+        `);
+        
+        const topProducts = await db.request().query(`
+            SELECT TOP 5 p.ProductName, SUM(ii.Quantity) as units, 
+            CAST(SUM(ii.Quantity) * 100.0 / (SELECT SUM(Quantity) FROM InvoiceItems) AS INT) as percent
+            FROM InvoiceItems ii
+            JOIN Products p ON ii.ProductID = p.ProductID
+            GROUP BY p.ProductName
+            ORDER BY units DESC
+        `);
+
+        res.json({
+            kpis: result.recordset[0],
+            topProducts: topProducts.recordset
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -265,6 +579,61 @@ app.get('/api/inventory/categories', auth, async (req, res) => {
         const db = await getPool();
         const result = await db.request().query('SELECT CategoryID, CategoryName FROM Categories ORDER BY CategoryName');
         res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/inventory/adjust - Quick Adjustment from modal
+app.patch('/api/inventory/adjust', auth, async (req, res) => {
+    const { productID, type, quantity, reason } = req.body;
+    if (!productID || !type || quantity === undefined) return res.status(400).json({ error: 'Missing adjustment parameters' });
+
+    try {
+        const db = await getPool();
+        const r = db.request();
+        r.input('pid', sql.Int, productID);
+        r.input('qty', sql.Int, parseInt(quantity));
+
+        // 1. Get current stock
+        const current = await r.query('SELECT QuantityOnHand FROM Inventory WHERE ProductID = @pid');
+        if (current.recordset.length === 0) return res.status(404).json({ error: 'Product not found in inventory' });
+        
+        let newQty = current.recordset[0].QuantityOnHand;
+        if (type === 'ADD') newQty += parseInt(quantity);
+        else if (type === 'REMOVE') newQty -= parseInt(quantity);
+        else if (type === 'SET') newQty = parseInt(quantity);
+
+        if (newQty < 0) return res.status(400).json({ error: 'Insufficient stock for removal' });
+
+        // 2. Update stock
+        r.input('newQty', sql.Int, newQty);
+        await r.query('UPDATE Inventory SET QuantityOnHand = @newQty, LastUpdated = GETDATE() WHERE ProductID = @pid');
+
+        // 3. Log transaction
+        const tr = db.request();
+        tr.input('pid', sql.Int, productID);
+        tr.input('uid', sql.Int, req.user.userID);
+        tr.input('type', sql.NVarChar, type);
+        tr.input('rem', sql.NVarChar, reason || `Quick Adjustment: ${type}`);
+        await tr.query(`
+            INSERT INTO InventoryTransactions (ProductID, WarehouseID, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks, ReferenceType)
+            VALUES (@pid, 1, 'ADJUSTMENT', @pid, GETDATE(), @uid, @rem, 'Adjustment')
+        `);
+
+        // 4. Update status in inventory
+        await db.request().input('pid', sql.Int, productID).query(`
+            UPDATE i SET i.Status = 
+                CASE 
+                    WHEN i.QuantityOnHand = 0 THEN 'CRITICAL_SHORTAGE'
+                    WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING'
+                    ELSE 'OPTIMAL'
+                END
+            FROM Inventory i
+            JOIN Products p ON i.ProductID = p.ProductID
+            WHERE i.ProductID = @pid
+        `);
+
+        await addLog('SYNC', `Quick Adjustment (${type}) for Product #${productID}: ${quantity} units.`, req.user.userID);
+        res.json({ success: true, newQuantity: newQty });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

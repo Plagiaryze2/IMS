@@ -38,8 +38,12 @@ const AdminProtectedRoute = ({ children }) => {
     );
   }
 
-  if (!user || user.role === 'User') {
+  if (!user) {
     return <Navigate to="/admin-login" state={{ from: location }} replace />;
+  }
+
+  if (user.role !== 'Administrator') {
+    return <Navigate to="/user/dashboard" replace />;
   }
 
   return children;
@@ -62,6 +66,10 @@ const UserProtectedRoute = ({ children }) => {
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user.role === 'Administrator') {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;
