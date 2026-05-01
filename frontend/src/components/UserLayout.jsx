@@ -281,17 +281,7 @@ const UserLayout = () => {
 
           {/* Sidebar Footer */}
           <div className="p-4 border-t border-gray-100 space-y-1">
-            <NavLink
-              to="/user/settings"
-              className={({ isActive }) => 
-                `flex items-center gap-4 px-4 py-4 text-[10px] font-black tracking-[0.2em] transition-all duration-200 ${
-                  isActive ? 'text-gray-900' : 'text-gray-400 hover:text-gray-900'
-                }`
-              }
-            >
-              <Settings size={20} />
-              SETTINGS
-            </NavLink>
+
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-4 px-4 py-4 text-[10px] font-black tracking-[0.2em] text-gray-400 hover:text-red-600 transition-all duration-200"

@@ -94,6 +94,7 @@ export const procurementAPI = {
 export const warehouseAPI = {
   getWarehouses: () => request('/warehouses'),
   getInventory: (params) => request(`/warehouse/inventory?warehouseId=${params?.warehouseId || ''}&aisle=${params?.aisle || ''}`),
+  getLocations: (warehouseId) => request(`/warehouse/locations?warehouseId=${warehouseId || ''}`),
   transfer: (data) => request('/warehouse/transfer', { method: 'POST', body: data }),
 };
 

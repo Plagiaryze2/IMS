@@ -651,12 +651,12 @@ app.get('/api/warehouses', auth, async (req, res) => {
     try {
         const db = await getPool();
         const result = await db.request().query(`
-            SELECT w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName,
+            SELECT w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName, w.MaxCapacity,
                    COUNT(DISTINCT CASE WHEN i.QuantityOnHand > 0 THEN i.ProductID END) as totalSkus,
                    ISNULL(SUM(CASE WHEN i.QuantityOnHand > 0 THEN i.QuantityOnHand ELSE 0 END), 0) as totalOccupancy
             FROM Warehouses w
             LEFT JOIN Inventory i ON w.WarehouseID = i.WarehouseID
-            GROUP BY w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName
+            GROUP BY w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName, w.MaxCapacity
         `);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -681,6 +681,28 @@ app.get('/api/warehouse/inventory', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/warehouse/locations - get location capacities for a warehouse
+app.get('/api/warehouse/locations', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const { warehouseId } = req.query;
+        const result = await db.request()
+            .input('wid', sql.Int, warehouseId || 0)
+            .query(`
+                SELECT lc.LocationID, lc.WarehouseID, lc.Aisle, lc.Shelf, lc.Bin, lc.MaxCapacity,
+                       ISNULL(SUM(CASE WHEN i.QuantityOnHand > 0 THEN i.QuantityOnHand ELSE 0 END), 0) as CurrentStock
+                FROM LocationCapacity lc
+                LEFT JOIN Inventory i ON lc.WarehouseID = i.WarehouseID 
+                    AND lc.Aisle = i.Aisle 
+                    AND ISNULL(lc.Shelf, '') = ISNULL(i.Shelf, '')
+                    AND ISNULL(lc.Bin, '') = ISNULL(i.Bin, '')
+                WHERE (@wid = 0 OR lc.WarehouseID = @wid)
+                GROUP BY lc.LocationID, lc.WarehouseID, lc.Aisle, lc.Shelf, lc.Bin, lc.MaxCapacity
+            `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // POST /api/warehouse/transfer
 app.post('/api/warehouse/transfer', auth, async (req, res) => {
     const { productId, sourceWarehouseId, destWarehouseId, qty, destAisle, destShelf, destBin } = req.body;
@@ -696,6 +718,25 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
     const shelf = destShelf || null;
     const bin = destBin || null;
     const aisleForInsert = destAisle || 'TBD';
+
+    // Check warehouse-level capacity
+    const pool = await getPool();
+    const capCheck = await pool.request()
+        .input('dwid', sql.Int, destWarehouseId)
+        .query(`
+            SELECT w.MaxCapacity, ISNULL(SUM(CASE WHEN i.QuantityOnHand > 0 THEN i.QuantityOnHand ELSE 0 END), 0) as CurrentStock
+            FROM Warehouses w
+            LEFT JOIN Inventory i ON w.WarehouseID = i.WarehouseID
+            WHERE w.WarehouseID = @dwid
+            GROUP BY w.MaxCapacity
+        `);
+    
+    if (capCheck.recordset.length > 0) {
+        const { MaxCapacity, CurrentStock } = capCheck.recordset[0];
+        if (CurrentStock + qty > MaxCapacity) {
+            return res.status(400).json({ error: `Destination warehouse would exceed capacity (${CurrentStock + qty}/${MaxCapacity} units)` });
+        }
+    }
     const transaction = new sql.Transaction(await getPool());
     try {
         await transaction.begin();
