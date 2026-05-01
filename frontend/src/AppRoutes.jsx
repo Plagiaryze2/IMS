@@ -11,6 +11,14 @@ import { useAuth, AuthProvider } from './context/AuthContext';
 import LandingPage from './pages/landing/LandingPage';
 import Register from './pages/user/Register';
 import UserLogin from './pages/user/UserLogin';
+import UserLayout from './components/UserLayout';
+import UserDashboard from './pages/user/UserDashboard';
+import UserInventory from './pages/user/UserInventory';
+import AddProduct from './pages/user/AddProduct';
+import UserSuppliers from './pages/user/UserSuppliers';
+import UserOrders from './pages/user/UserOrders';
+import UserSales from './pages/user/UserSales';
+import CreateInvoice from './pages/user/CreateInvoice';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -26,6 +34,7 @@ const ProtectedRoute = ({ children }) => {
       </div>
     );
   }
+
 
   if (!user) {
     // Redirect to admin login if they were trying to access admin area
@@ -44,6 +53,7 @@ const AppRoutes = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/admin-login" element={<Login />} />
         
+        {/* Admin Interface */}
         <Route element={
           <ProtectedRoute>
             <Layout />
@@ -55,6 +65,22 @@ const AppRoutes = () => {
           <Route path="/alerts" element={<AlertsCenter />} />
           <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
         </Route>
+
+        {/* User Interface */}
+        <Route element={
+          <ProtectedRoute>
+            <UserLayout />
+          </ProtectedRoute>
+        }>
+          <Route path="/user/dashboard" element={<UserDashboard />} />
+          <Route path="/user/inventory" element={<UserInventory />} />
+          <Route path="/user/inventory/add" element={<AddProduct />} />
+          <Route path="/user/suppliers" element={<UserSuppliers />} />
+          <Route path="/user/orders" element={<UserOrders />} />
+          <Route path="/user/sales" element={<UserSales />} />
+          <Route path="/user/sales/create" element={<CreateInvoice />} />
+          <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
+        </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -65,4 +91,3 @@ const AppRoutes = () => {
 
 
 export default AppRoutes;
-
