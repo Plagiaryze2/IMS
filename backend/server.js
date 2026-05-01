@@ -157,33 +157,19 @@ app.get('/api/user/dashboard/stats', auth, async (req, res) => {
         const db = await getPool();
         const result = await db.request().query(`
             SELECT
-                (SELECT COUNT(*) FROM PurchaseOrders WHERE Status IN ('Pending', 'Approved', 'Partially Received')) AS activeShipments,
-                (SELECT COUNT(*) FROM Invoices WHERE InvoiceStatus IN ('Unpaid', 'Partially Paid')) AS pendingInvoices,
+                (SELECT ISNULL(SUM(QuantityOnHand), 0) FROM Inventory) AS totalStock,
+                (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') AS activeOrders,
                 (SELECT COUNT(*) FROM Inventory WHERE Status != 'OPTIMAL') AS lowStockItems,
-                (SELECT SUM(p.UnitPrice * i.QuantityOnHand) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS totalValue
+                (SELECT ISNULL(SUM(TotalAmount), 0) FROM Invoices
+                    WHERE CAST(InvoiceDate AS DATE) = CAST(GETDATE() AS DATE)
+                      AND InvoiceStatus = 'Paid') AS revenueYTD
         `);
         res.json(result.recordset[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/user/dashboard/activity
-app.get('/api/user/dashboard/activity', auth, async (req, res) => {
-    try {
-        const db = await getPool();
-        const result = await db.request().query(`
-            SELECT TOP 10 
-                FORMAT(sl.CreatedAt, 'HH:mm:ss') AS time,
-                'EVT-' + CAST(sl.LogID AS NVARCHAR) AS id,
-                sl.Message AS [desc],
-                COALESCE(u.FullName, 'SYSTEM') AS op,
-                sl.LogType AS status
-            FROM SystemLogs sl
-            LEFT JOIN Users u ON sl.UserID = u.UserID
-            ORDER BY sl.CreatedAt DESC
-        `);
-        res.json(result.recordset);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+
+// (activity endpoint consolidated below, after user/dashboard/summary)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CUSTOMERS
@@ -196,6 +182,90 @@ app.get('/api/customers', auth, async (req, res) => {
         const result = await db.request().query('SELECT CustomerID, CustomerName, Address FROM Customers ORDER BY CustomerName');
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GLOBAL SEARCH
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// GET /api/search?q=
+app.get('/api/search', auth, async (req, res) => {
+    const q = req.query.q || '';
+    if (!q || q.length < 2) return res.json([]);
+    
+    try {
+        const db = await getPool();
+        const like = `%${q}%`;
+
+        // Search Products — fresh request per query (mssql can't reuse request objects)
+        const prod = await db.request()
+            .input('q', sql.NVarChar, like)
+            .query(`
+                SELECT TOP 4
+                    ProductID as id,
+                    SKU,
+                    ProductName as title,
+                    'Product' as type,
+                    '/user/inventory' as path
+                FROM Products
+                WHERE SKU LIKE @q OR ProductName LIKE @q
+            `);
+
+        // Search Customers (Email column, not ContactEmail)
+        const cust = await db.request()
+            .input('q', sql.NVarChar, like)
+            .query(`
+                SELECT TOP 4
+                    CustomerID as id,
+                    Email as SKU,
+                    CustomerName as title,
+                    'Customer' as type,
+                    '/user/sales' as path
+                FROM Customers
+                WHERE CustomerName LIKE @q OR Email LIKE @q
+            `);
+
+        // Search Suppliers (Email column, not ContactEmail)
+        const supp = await db.request()
+            .input('q', sql.NVarChar, like)
+            .query(`
+                SELECT TOP 3
+                    SupplierID as id,
+                    Email as SKU,
+                    SupplierName as title,
+                    'Supplier' as type,
+                    '/user/suppliers' as path
+                FROM Suppliers
+                WHERE SupplierName LIKE @q OR Email LIKE @q
+            `);
+
+        // Search Orders by numeric ID
+        let ord = { recordset: [] };
+        if (!isNaN(parseInt(q))) {
+            ord = await db.request()
+                .input('num', sql.Int, parseInt(q))
+                .query(`
+                    SELECT TOP 3
+                        SalesOrderID as id,
+                        Status as SKU,
+                        'Order #' + CAST(SalesOrderID AS VARCHAR) as title,
+                        'Order' as type,
+                        '/user/orders' as path
+                    FROM SalesOrders
+                    WHERE SalesOrderID = @num
+                `);
+        }
+
+        const results = [
+            ...prod.recordset,
+            ...cust.recordset,
+            ...supp.recordset,
+            ...ord.recordset,
+        ];
+        res.json(results.slice(0, 8));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -412,19 +482,26 @@ app.get('/api/user/dashboard/stats', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// GET /api/user/dashboard/activity
 app.get('/api/user/dashboard/activity', auth, async (req, res) => {
     try {
         const db = await getPool();
-        const result = await db.request().query(`
+        const isAdmin = req.user.role === 'Administrator';
+        const userID = req.user.userID;
+        const result = await db.request()
+            .input('userID', sql.Int, userID)
+            .query(`
             SELECT TOP 10 
-                CONVERT(VARCHAR, Timestamp, 108) as time,
-                'EVT-' + CAST(LogID AS VARCHAR) as id,
-                Action as [desc],
-                u.Username as op,
-                CASE WHEN ActionType = 'SYNC' THEN 'SYNC' WHEN ActionType = 'ERROR' THEN 'ERR' ELSE 'INFO' END as status
+                CONVERT(VARCHAR, l.CreatedAt, 108) as time,
+                'EVT-' + CAST(l.LogID AS VARCHAR) as id,
+                l.Message as [desc],
+                ISNULL(u.Username, 'SYSTEM') as op,
+                CASE WHEN l.LogType = 'SYNC' THEN 'SYNC' WHEN l.LogType = 'ERROR' THEN 'ERR' ELSE 'INFO' END as status
             FROM SystemLogs l
             LEFT JOIN Users u ON l.UserID = u.UserID
-            ORDER BY Timestamp DESC
+            WHERE l.UserID = @userID
+              AND l.LogType NOT IN ('SYSTEM', 'USER')
+            ORDER BY l.CreatedAt DESC
         `);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -819,7 +896,12 @@ app.get('/api/roles', auth, async (req, res) => {
 
 // GET /api/alerts?category=&unread=true
 app.get('/api/alerts', auth, async (req, res) => {
-    const { category = '', unread } = req.query;
+    let { category = '', unread } = req.query;
+
+    if (req.user.role !== 'Administrator') {
+        category = 'STOCK';
+    }
+
     try {
         const db = await getPool();
         const r = db.request();
@@ -837,7 +919,7 @@ app.get('/api/alerts', auth, async (req, res) => {
             LEFT JOIN Users u ON a.AcknowledgedBy = u.UserID
             WHERE (@category = '' OR a.Category = @category)
               AND (@unread IS NULL OR a.IsRead = 0)
-            ORDER BY a.CreatedAt DESC
+            ORDER BY a.IsRead ASC, a.CreatedAt DESC
         `);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }

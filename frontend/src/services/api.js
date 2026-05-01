@@ -108,3 +108,8 @@ export const alertsAPI = {
   acknowledge:  (id) => request(`/alerts/${id}/acknowledge`, { method: 'PUT' }),
   create:       (data) => request('/alerts', { method: 'POST', body: data }),
 };
+
+// ─── Global Search ─────────────────────────────────────────────────────────
+export const searchAPI = {
+  query: (q) => request(`/search?q=${encodeURIComponent(q)}`),
+};
