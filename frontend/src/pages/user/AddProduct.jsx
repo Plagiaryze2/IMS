@@ -11,7 +11,7 @@ import {
   DollarSign,
   AlertCircle
 } from 'lucide-react';
-import { inventoryAPI } from '../../services/api';
+import { inventoryAPI, warehouseAPI } from '../../services/api';
 import Swal from 'sweetalert2';
 
 const AddProduct = () => {
@@ -27,22 +27,31 @@ const AddProduct = () => {
     sellingPrice: '0.00',
     taxRate: '20.0',
     initialQty: '0',
-    alertLevel: '10'
+    alertLevel: '10',
+    warehouseID: ''
   });
 
   const [categories, setCategories] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
-    const fetchCats = async () => {
+    const initData = async () => {
       try {
-        const data = await inventoryAPI.getCategories();
-        setCategories(data);
+        const [cats, whs] = await Promise.all([
+          inventoryAPI.getCategories(),
+          warehouseAPI.getWarehouses()
+        ]);
+        setCategories(cats);
+        setWarehouses(whs);
+        if (whs.length > 0) {
+          setFormData(prev => ({ ...prev, warehouseID: whs[0].WarehouseID }));
+        }
       } catch (err) {
-        console.error('Failed to fetch categories:', err);
+        console.error('Failed to fetch initial data:', err);
       }
     };
-    fetchCats();
+    initData();
   }, []);
 
   const generateSKU = () => {
@@ -68,7 +77,8 @@ const AddProduct = () => {
         description: formData.description,
         brand: formData.brand,
         barcode: formData.barcode,
-        taxRate: parseFloat(formData.taxRate)
+        taxRate: parseFloat(formData.taxRate),
+        warehouseID: formData.warehouseID
       };
 
       await inventoryAPI.create(payload);
@@ -256,14 +266,28 @@ const AddProduct = () => {
             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 border-b border-gray-100 pb-2">4. THRESHOLDS</h2>
             
             <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700 mb-2">Initial_Stock_QTY</label>
-                <input 
-                  type="number" 
-                  className="w-full border-b-2 border-gray-200 p-2 text-lg font-mono font-bold focus:outline-none focus:border-[#047857] transition-colors"
-                  value={formData.initialQty}
-                  onChange={e => setFormData({...formData, initialQty: e.target.value})}
-                />
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700 mb-2">Initial_Stock_QTY</label>
+                  <input 
+                    type="number" 
+                    className="w-full border-b-2 border-gray-200 p-2 text-lg font-mono font-bold focus:outline-none focus:border-[#047857] transition-colors"
+                    value={formData.initialQty}
+                    onChange={e => setFormData({...formData, initialQty: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-gray-700 mb-2">Target_Warehouse</label>
+                  <select 
+                    className="w-full border-b-2 border-gray-200 p-2 text-sm font-bold bg-white focus:outline-none focus:border-[#047857] transition-colors"
+                    value={formData.warehouseID}
+                    onChange={e => setFormData({...formData, warehouseID: e.target.value})}
+                  >
+                    {warehouses.map(wh => (
+                      <option key={wh.WarehouseID} value={wh.WarehouseID}>{wh.WarehouseName}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Low_Stock_Alert_Level</label>

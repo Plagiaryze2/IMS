@@ -18,7 +18,7 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { procurementAPI, inventoryAPI } from '../../services/api';
+import { procurementAPI, inventoryAPI, warehouseAPI } from '../../services/api';
 import Swal from 'sweetalert2';
 
 const UserOrders = () => {
@@ -36,6 +36,8 @@ const UserOrders = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [taxRate, setTaxRate] = useState(10);
+  const [warehouses, setWarehouses] = useState([]);
+  const [selectedWarehouseID, setSelectedWarehouseID] = useState('');
 
   useEffect(() => {
     fetchOrders();
@@ -56,9 +58,14 @@ const UserOrders = () => {
 
   const fetchSuppliers = async () => {
     try {
-      const supps = await procurementAPI.getSuppliers();
+      const [supps, whs] = await Promise.all([
+        procurementAPI.getSuppliers(),
+        warehouseAPI.getWarehouses()
+      ]);
       setSuppliers(supps);
       if (supps.length > 0) setSelectedSupplierID(supps[0].SupplierID);
+      setWarehouses(whs);
+      if (whs.length > 0) setSelectedWarehouseID(whs[0].WarehouseID);
     } catch (e) {}
   };
 
@@ -151,6 +158,7 @@ const UserOrders = () => {
       const total = lineItems.reduce((acc, item) => acc + (item.qty * item.price), 0);
       await procurementAPI.createOrder({
         supplierID: selectedSupplierID,
+        warehouseID: selectedWarehouseID,
         items: lineItems.map(i => ({ productID: i.productID, qty: i.qty, price: i.price })),
         totalAmount: total + (total * taxRate / 100)
       });
@@ -263,6 +271,21 @@ const UserOrders = () => {
                 >
                   {suppliers.map(s => (
                     <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-0 top-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Target Warehouse</label>
+              <div className="relative">
+                <select 
+                  value={selectedWarehouseID}
+                  onChange={(e) => setSelectedWarehouseID(e.target.value)}
+                  className="w-full border-b-2 border-gray-200 py-3 text-sm font-bold bg-white focus:outline-none focus:border-[#047857] appearance-none cursor-pointer"
+                >
+                  {warehouses.map(w => (
+                    <option key={w.WarehouseID} value={w.WarehouseID}>{w.WarehouseName}</option>
                   ))}
                 </select>
                 <ChevronDown size={14} className="absolute right-0 top-4 text-gray-400 pointer-events-none" />

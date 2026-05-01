@@ -21,7 +21,7 @@ import {
   History,
   Truck
 } from 'lucide-react';
-import { salesAPI } from '../../services/api';
+import { salesAPI, warehouseAPI } from '../../services/api';
 import Swal from 'sweetalert2';
 
 const UserSales = () => {
@@ -76,13 +76,47 @@ const UserSales = () => {
 
   const handleShipOrder = async (id) => {
     try {
+      Swal.fire({ title: 'Loading Facilities...', didOpen: () => Swal.showLoading() });
+      const whs = await warehouseAPI.getWarehouses();
+      if (whs.length === 0) throw new Error("No warehouses available for dispatch.");
+      
+      const optionsHtml = whs.map(w => `<option value="${w.WarehouseID}">${w.WarehouseName} (${w.Location})</option>`).join('');
+
+      const { value: selectedWarehouse, isConfirmed } = await Swal.fire({
+        title: '<h2 class="text-2xl font-black uppercase italic tracking-tighter">Dispatch Order</h2>',
+        html: `
+          <div class="space-y-4 text-left p-2 font-sans">
+            <p class="text-xs text-gray-500 font-bold uppercase">Select the source facility for this shipment.</p>
+            <div>
+              <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Source Warehouse</label>
+              <select id="swal-warehouse" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none">
+                ${optionsHtml}
+              </select>
+            </div>
+          </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'CONFIRM DISPATCH',
+        cancelButtonText: 'CANCEL',
+        customClass: {
+          confirmButton: 'bg-black text-white px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-800',
+          cancelButton: 'bg-gray-200 text-black px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-300'
+        },
+        preConfirm: () => {
+          return document.getElementById('swal-warehouse').value;
+        }
+      });
+
+      if (!isConfirmed || !selectedWarehouse) return;
+
       Swal.fire({
         title: 'Creating Shipment...',
         allowOutsideClick: false,
         didOpen: () => Swal.showLoading()
       });
 
-      await salesAPI.shipInvoice(id);
+      await salesAPI.shipInvoice(id, { warehouseID: selectedWarehouse });
       
       Swal.fire({
         icon: 'success',

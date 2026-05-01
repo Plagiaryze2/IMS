@@ -211,6 +211,28 @@ app.get('/api/customers', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/customers
+app.post('/api/customers', auth, async (req, res) => {
+    try {
+        const { name, phone, email, address, type = 'Regular' } = req.body;
+        if (!name) return res.status(400).json({ error: 'Customer name is required' });
+        
+        const db = await getPool();
+        const result = await db.request()
+            .input('name', sql.NVarChar, name)
+            .input('phone', sql.NVarChar, phone || null)
+            .input('email', sql.NVarChar, email || null)
+            .input('addr', sql.NVarChar, address || null)
+            .input('type', sql.NVarChar, type)
+            .query(`
+                INSERT INTO Customers (CustomerName, Phone, Email, Address, CustomerType)
+                OUTPUT INSERTED.*
+                VALUES (@name, @phone, @email, @addr, @type)
+            `);
+        res.status(201).json(result.recordset[0]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // GLOBAL SEARCH
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -494,14 +516,16 @@ app.post('/api/sales/invoice/:id/ship', auth, async (req, res) => {
         const shipCheck = await r.query(`SELECT 1 FROM Deliveries WHERE SalesOrderID = ${SalesOrderID}`);
         if (shipCheck.recordset.length > 0) throw new Error('Order already shipped');
 
+        const { warehouseID } = req.body;
         const dr = new sql.Request(transaction);
         dr.input('soid', sql.Int, SalesOrderID);
         dr.input('uid', sql.Int, req.user.userID);
         dr.input('addr', sql.NVarChar, destinationAddress);
+        dr.input('wid', sql.Int, warehouseID || 1);
         const dRes = await dr.query(`
             INSERT INTO Deliveries (SalesOrderID, WarehouseID, DispatchedByUserID, DeliveryDate, TrackingCode, DeliveryStatus, DestinationAddress)
             OUTPUT INSERTED.DeliveryID
-            VALUES (@soid, 1, @uid, GETDATE(), 'TRK-' + CAST(ABS(CHECKSUM(NEWID())) % 1000000 AS VARCHAR), 'Scheduled', @addr)
+            VALUES (@soid, @wid, @uid, GETDATE(), 'TRK-' + CAST(ABS(CHECKSUM(NEWID())) % 1000000 AS VARCHAR), 'Scheduled', @addr)
         `);
         const deliveryID = dRes.recordset[0].DeliveryID;
 
@@ -636,7 +660,7 @@ app.delete('/api/suppliers/:id', auth, async (req, res) => {
 
 // POST /api/purchase-orders
 app.post('/api/purchase-orders', auth, async (req, res) => {
-    const { supplierID, items, totalAmount } = req.body;
+    const { supplierID, items, totalAmount, warehouseID } = req.body;
     if (!supplierID || !items || items.length === 0) return res.status(400).json({ error: 'Missing supplier or items' });
 
     const transaction = new sql.Transaction(await getPool());
@@ -648,10 +672,11 @@ app.post('/api/purchase-orders', auth, async (req, res) => {
         r.input('sid', sql.Int, supplierID);
         r.input('uid', sql.Int, req.user.userID);
         r.input('total', sql.Decimal(18, 2), totalAmount);
+        r.input('wid', sql.Int, warehouseID || 1);
         const poRes = await r.query(`
             INSERT INTO PurchaseOrders (SupplierID, OrderDate, TotalAmount, Status, OrderedByUserID, WarehouseID)
             OUTPUT INSERTED.PurchaseOrderID
-            VALUES (@sid, GETDATE(), @total, 'Pending', @uid, 1)
+            VALUES (@sid, GETDATE(), @total, 'Pending', @uid, @wid)
         `);
         const poID = poRes.recordset[0].PurchaseOrderID;
 
@@ -801,6 +826,28 @@ app.get('/api/warehouses', auth, async (req, res) => {
             GROUP BY w.WarehouseID, w.WarehouseName, w.Location, w.ManagerName, w.MaxCapacity
         `);
         res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/warehouses
+app.post('/api/warehouses', auth, async (req, res) => {
+    try {
+        const { name, location, capacity = 10000, managerName = '', contactNumber = '' } = req.body;
+        if (!name || !location) return res.status(400).json({ error: 'Warehouse name and location are required' });
+        
+        const db = await getPool();
+        const result = await db.request()
+            .input('name', sql.NVarChar, name)
+            .input('loc', sql.NVarChar, location)
+            .input('mgr', sql.NVarChar, managerName)
+            .input('contact', sql.NVarChar, contactNumber)
+            .input('cap', sql.Int, parseInt(capacity))
+            .query(`
+                INSERT INTO Warehouses (WarehouseName, Location, ManagerName, ContactNumber, MaxCapacity)
+                OUTPUT INSERTED.*
+                VALUES (@name, @loc, @mgr, @contact, @cap)
+            `);
+        res.status(201).json(result.recordset[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -7,7 +7,8 @@ import {
   ChevronDown,
   Loader2,
   Package,
-  Layers
+  Layers,
+  Plus
 } from 'lucide-react';
 import { warehouseAPI, inventoryAPI } from '../../services/api';
 import Swal from 'sweetalert2';
@@ -67,6 +68,67 @@ const UserWarehouse = () => {
     
     fetchInventory();
   }, [selectedWarehouseId, selectedAisle]);
+
+  const handleCreateWarehouse = async () => {
+    const { value: formValues } = await Swal.fire({
+      title: '<h2 class="text-2xl font-black uppercase italic tracking-tighter">Register New Warehouse</h2>',
+      html: `
+        <div class="space-y-4 text-left p-2 font-sans">
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Warehouse Name *</label>
+            <input id="swal-wh-name" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="e.g. Main Hub">
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Location *</label>
+            <input id="swal-wh-loc" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="e.g. North Wing, City">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Manager</label>
+              <input id="swal-wh-mgr" class="w-full border-2 border-gray-200 p-3 text-sm font-bold focus:border-black transition-all outline-none" placeholder="Manager Name">
+            </div>
+            <div>
+              <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Capacity</label>
+              <input id="swal-wh-cap" type="number" min="1000" class="w-full border-2 border-gray-200 p-3 text-sm font-bold focus:border-black transition-all outline-none" placeholder="10000">
+            </div>
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'REGISTER',
+      cancelButtonText: 'CANCEL',
+      customClass: {
+        confirmButton: 'bg-black text-white px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-800',
+        cancelButton: 'bg-gray-200 text-black px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-300'
+      },
+      preConfirm: () => {
+        const name = document.getElementById('swal-wh-name').value;
+        const loc = document.getElementById('swal-wh-loc').value;
+        const mgr = document.getElementById('swal-wh-mgr').value;
+        const cap = document.getElementById('swal-wh-cap').value;
+
+        if (!name || !loc) {
+          Swal.showValidationMessage('Name and Location are required');
+          return false;
+        }
+        return { name, location: loc, managerName: mgr, capacity: cap || 10000 };
+      }
+    });
+
+    if (formValues) {
+      try {
+        Swal.fire({ title: 'Registering...', didOpen: () => Swal.showLoading() });
+        const newWh = await warehouseAPI.createWarehouse(formValues);
+        const whData = await warehouseAPI.getWarehouses();
+        setWarehouses(whData);
+        setSelectedWarehouseId(newWh.WarehouseID);
+        Swal.fire('Success', 'New warehouse registered successfully.', 'success');
+      } catch (e) {
+        Swal.fire('Error', e.message, 'error');
+      }
+    }
+  };
 
   // Handle Quick Transfer using SweetAlert2
   const handleTransfer = async () => {
@@ -206,12 +268,20 @@ const UserWarehouse = () => {
           <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase italic">Logistics Hub</h1>
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Manage physical inventory distribution and site capacity.</p>
         </div>
-        <button 
-          onClick={handleTransfer}
-          className="bg-black text-white px-8 py-3 text-[10px] font-black tracking-widest uppercase hover:bg-gray-800 transition-all flex items-center gap-2 shadow-2xl"
-        >
-          <ArrowRightLeft size={14} /> Quick Transfer
-        </button>
+        <div className="flex gap-4">
+          <button 
+            onClick={handleCreateWarehouse}
+            className="bg-white border-2 border-gray-200 text-black px-6 py-3 text-[10px] font-black tracking-widest uppercase hover:border-black transition-all flex items-center gap-2"
+          >
+            <Plus size={14} /> New Warehouse
+          </button>
+          <button 
+            onClick={handleTransfer}
+            className="bg-black text-white px-8 py-3 text-[10px] font-black tracking-widest uppercase hover:bg-gray-800 transition-all flex items-center gap-2 shadow-2xl"
+          >
+            <ArrowRightLeft size={14} /> Quick Transfer
+          </button>
+        </div>
       </div>
 
       {/* Warehouse Cards */}
