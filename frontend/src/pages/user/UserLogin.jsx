@@ -25,7 +25,6 @@ const UserLogin = () => {
       if (data.user.role === 'Administrator') {
         navigate('/dashboard');
       } else {
-        // For now, redirect to a simple welcome or back to landing
         Swal.fire({
           icon: 'success',
           title: 'Access Granted',
@@ -33,7 +32,8 @@ const UserLogin = () => {
           timer: 2000,
           showConfirmButton: false
         });
-        navigate('/');
+        navigate('/user/dashboard');
+
       }
     } catch (err) {
       setError(err.message || 'Authentication failed. Check your credentials.');
