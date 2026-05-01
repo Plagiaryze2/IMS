@@ -59,10 +59,12 @@ export const inventoryAPI = {
     const q = new URLSearchParams(params).toString();
     return request(`/inventory?${q}`);
   },
+  getStats: () => request('/inventory/stats'),
   getCategories: () => request('/inventory/categories'),
   create:  (data) => request('/inventory', { method: 'POST', body: data }),
   update:  (id, data) => request(`/inventory/${id}`, { method: 'PUT', body: data }),
   adjust:  (data) => request('/inventory/adjust', { method: 'PATCH', body: data }),
+  bulkAdjust: (data) => request('/inventory/batch-sync', { method: 'POST', body: data }),
   remove:  (id) => request(`/inventory/${id}`, { method: 'DELETE' }),
 };
 

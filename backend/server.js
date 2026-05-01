@@ -32,6 +32,7 @@ function auth(req, res, next) {
     if (!token) return res.status(401).json({ error: 'No token provided' });
     try {
         req.user = jwt.verify(token, JWT_SECRET);
+        console.log(`[AUTH] User: ${req.user.username} | Path: ${req.method} ${req.path}`);
         next();
     } catch {
         res.status(401).json({ error: 'Invalid token' });
@@ -602,10 +603,43 @@ app.post('/api/dashboard/logs', auth, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INVENTORY
+// INVENTORY & PRODUCT MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/inventory?search=&category=&status=&page=1&limit=10
+// GET /api/inventory/stats - Aggregates for top cards (SPECIFIC FIRST)
+app.get('/api/inventory/stats', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT 
+                (SELECT ISNULL(SUM(QuantityOnHand), 0) FROM Inventory) AS totalStock,
+                (SELECT ISNULL(SUM(p.UnitPrice * i.QuantityOnHand), 0) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS totalValue,
+                (SELECT COUNT(*) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID WHERE i.QuantityOnHand <= p.ReorderLevel) AS lowStock
+        `);
+        res.json(result.recordset[0]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/inventory/categories
+app.get('/api/inventory/categories', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query('SELECT CategoryID, CategoryName FROM Categories ORDER BY CategoryName');
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/inventory/batch-sync (Consolidated Bulk sync)
+app.post('/api/inventory/batch-sync', auth, bulkAdjust);
+
+// PATCH /api/inventory/adjust - Quick Adjustment legacy
+app.patch('/api/inventory/adjust', auth, async (req, res) => {
+    const { productID, type, quantity, reason } = req.body;
+    req.body = { adjustments: [{ productID, type, quantity, reason }] };
+    return bulkAdjust(req, res);
+});
+
+// GET /api/inventory (LISTING GENERIC)
 app.get('/api/inventory', auth, async (req, res) => {
     const { search = '', category = '', status = '', page = 1, limit = 10 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -650,78 +684,100 @@ app.get('/api/inventory', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /api/inventory/categories
-app.get('/api/inventory/categories', auth, async (req, res) => {
+async function bulkAdjust(req, res) {
+    const { adjustments } = req.body;
+    if (!adjustments || !Array.isArray(adjustments)) return res.status(400).json({ error: 'Adjustments array is required' });
+
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
     try {
-        const db = await getPool();
-        const result = await db.request().query('SELECT CategoryID, CategoryName FROM Categories ORDER BY CategoryName');
-        res.json(result.recordset);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+        await transaction.begin();
+        const results = [];
 
-// PATCH /api/inventory/adjust - Quick Adjustment from modal
-app.patch('/api/inventory/adjust', auth, async (req, res) => {
-    const { productID, type, quantity, reason } = req.body;
-    if (!productID || !type || quantity === undefined) return res.status(400).json({ error: 'Missing adjustment parameters' });
+        for (const adj of adjustments) {
+            const { productID, type, quantity, reason } = adj;
+            const r = new sql.Request(transaction);
+            r.input('pid', sql.Int, productID);
 
-    try {
-        const db = await getPool();
-        const r = db.request();
-        r.input('pid', sql.Int, productID);
-        r.input('qty', sql.Int, parseInt(quantity));
+            // 1. Get current
+            const currentRes = await r.query('SELECT QuantityOnHand FROM Inventory WHERE ProductID = @pid');
+            if (currentRes.recordset.length === 0) throw new Error(`Product ${productID} not found`);
 
-        // 1. Get current stock
-        const current = await r.query('SELECT QuantityOnHand FROM Inventory WHERE ProductID = @pid');
-        if (current.recordset.length === 0) return res.status(404).json({ error: 'Product not found in inventory' });
-        
-        let newQty = current.recordset[0].QuantityOnHand;
-        if (type === 'ADD') newQty += parseInt(quantity);
-        else if (type === 'REMOVE') newQty -= parseInt(quantity);
-        else if (type === 'SET') newQty = parseInt(quantity);
+            let oldQty = currentRes.recordset[0].QuantityOnHand;
+            let newQty = oldQty;
+            const amt = parseInt(quantity);
 
-        if (newQty < 0) return res.status(400).json({ error: 'Insufficient stock for removal' });
+            if (type === 'ADD') newQty += amt;
+            else if (type === 'REMOVE') newQty -= amt;
+            else if (type === 'SET') newQty = amt;
 
-        // 2. Update stock
-        r.input('newQty', sql.Int, newQty);
-        await r.query('UPDATE Inventory SET QuantityOnHand = @newQty, LastUpdated = GETDATE() WHERE ProductID = @pid');
+            if (newQty < 0) throw new Error(`Insufficient stock for Product ${productID}`);
 
-        // 3. Log transaction
-        const tr = db.request();
-        tr.input('pid', sql.Int, productID);
-        tr.input('uid', sql.Int, req.user.userID);
-        tr.input('type', sql.NVarChar, type);
-        tr.input('rem', sql.NVarChar, reason || `Quick Adjustment: ${type}`);
-        await tr.query(`
-            INSERT INTO InventoryTransactions (ProductID, WarehouseID, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks, ReferenceType)
-            VALUES (@pid, 1, 'ADJUSTMENT', @pid, GETDATE(), @uid, @rem, 'Adjustment')
-        `);
+            // 2. Update stock
+            const ur = new sql.Request(transaction);
+            ur.input('pid', sql.Int, productID);
+            ur.input('qty', sql.Int, newQty);
+            await ur.query('UPDATE Inventory SET QuantityOnHand = @qty, LastUpdated = GETDATE() WHERE ProductID = @pid');
 
-        // 4. Update status in inventory
-        await db.request().input('pid', sql.Int, productID).query(`
-            UPDATE i SET i.Status = 
-                CASE 
-                    WHEN i.QuantityOnHand = 0 THEN 'CRITICAL_SHORTAGE'
-                    WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING'
-                    ELSE 'OPTIMAL'
-                END
-            FROM Inventory i
-            JOIN Products p ON i.ProductID = p.ProductID
-            WHERE i.ProductID = @pid
-        `);
+            // 3. Log transaction
+            const tr = new sql.Request(transaction);
+            tr.input('pid', sql.Int, productID);
+            tr.input('uid', sql.Int, req.user.userID);
+            tr.input('type', sql.NVarChar, type);
+            tr.input('amt', sql.Int, amt);
+            tr.input('rem', sql.NVarChar, reason || `Bulk Adjustment: ${type}`);
+            await tr.query(`
+                INSERT INTO InventoryTransactions (ProductID, WarehouseID, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks, ReferenceType)
+                VALUES (@pid, 1, 'ADJUSTMENT', @amt, GETDATE(), @uid, @rem, 'Adjustment')
+            `);
 
-        await addLog('SYNC', `Quick Adjustment (${type}) for Product #${productID}: ${quantity} units.`, req.user.userID);
-        res.json({ success: true, newQuantity: newQty });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+            // 4. Update status
+            const sr = new sql.Request(transaction);
+            sr.input('pid', sql.Int, productID);
+            await sr.query(`
+                UPDATE i SET i.Status = 
+                    CASE 
+                        WHEN i.QuantityOnHand = 0 THEN 'CRITICAL_SHORTAGE'
+                        WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING'
+                        ELSE 'OPTIMAL'
+                    END
+                FROM Inventory i
+                JOIN Products p ON i.ProductID = p.ProductID
+                WHERE i.ProductID = @pid
+            `);
+
+            results.push({ productID, oldQty, newQty });
+        }
+
+        await transaction.commit();
+        await addLog('SYNC', `Processed bulk adjustment for ${adjustments.length} items.`, req.user.userID);
+        res.json({ success: true, results });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
+}
+
+// REMOVED app.post('/api/inventory/bulk-adjust') - MOVED TO TOP OF INVENTORY SECTION
 
 // POST /api/inventory  — Add new SKU
 app.post('/api/inventory', auth, async (req, res) => {
-    const { sku, productName, categoryID, supplierID = 1, unitPrice, costPrice, reorderLevel = 10, stock = 0, warehouseID = 1, description = '' } = req.body;
+    const { 
+        sku, productName, categoryID, supplierID = 1, 
+        unitPrice, costPrice, reorderLevel = 10, 
+        stock = 0, warehouseID = 1, description = '',
+        brand = '', barcode = '', taxRate = 20.0
+    } = req.body;
+
     if (!sku || !productName || !unitPrice) return res.status(400).json({ error: 'SKU, Product Name and Unit Price are required.' });
+    
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
     try {
-        const db = await getPool();
-        // Insert product
-        const r = db.request();
+        await transaction.begin();
+        
+        // 1. Insert product (Handling brand, barcode if columns exist, else ignore)
+        const r = new sql.Request(transaction);
         r.input('sku', sql.NVarChar, sku);
         r.input('name', sql.NVarChar, productName);
         r.input('catID', sql.Int, categoryID || 1);
@@ -730,24 +786,51 @@ app.post('/api/inventory', auth, async (req, res) => {
         r.input('cost', sql.Decimal(18,2), parseFloat(costPrice || unitPrice * 0.7));
         r.input('reorder', sql.Int, parseInt(reorderLevel));
         r.input('desc', sql.NVarChar, description);
+        r.input('brand', sql.NVarChar, brand);
+        r.input('barcode', sql.NVarChar, barcode);
+        r.input('tax', sql.Decimal(5,2), parseFloat(taxRate));
+        
+        // We use a dynamic check or just assume they exist if we are standardizing the schema
         const prod = await r.query(`
-            INSERT INTO Products (SKU, ProductName, CategoryID, SupplierID, UnitPrice, CostPrice, ReorderLevel, Description, IsActive)
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'Brand')
+                ALTER TABLE Products ADD Brand NVARCHAR(100);
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'Barcode')
+                ALTER TABLE Products ADD Barcode NVARCHAR(100);
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'TaxRate')
+                ALTER TABLE Products ADD TaxRate DECIMAL(5,2) DEFAULT 20.0;
+
+            INSERT INTO Products (SKU, ProductName, CategoryID, SupplierID, UnitPrice, CostPrice, ReorderLevel, Description, Brand, Barcode, TaxRate, IsActive)
             OUTPUT INSERTED.ProductID
-            VALUES (@sku, @name, @catID, @supID, @price, @cost, @reorder, @desc, 1)
+            VALUES (@sku, @name, @catID, @supID, @price, @cost, @reorder, @desc, @brand, @barcode, @tax, 1)
         `);
         const productID = prod.recordset[0].ProductID;
 
-        // Insert inventory
-        const ir = db.request();
+        // 2. Insert inventory
+        const ir = new sql.Request(transaction);
         ir.input('pid', sql.Int, productID);
         ir.input('wid', sql.Int, warehouseID);
         ir.input('qty', sql.Int, parseInt(stock));
         ir.input('status', sql.NVarChar, parseInt(stock) === 0 ? 'CRITICAL_SHORTAGE' : parseInt(stock) <= parseInt(reorderLevel) ? 'REORDER_WARNING' : 'OPTIMAL');
         await ir.query('INSERT INTO Inventory (ProductID, WarehouseID, QuantityOnHand, Status) VALUES (@pid, @wid, @qty, @status)');
 
-        await addLog('SYNC', `New SKU added: ${sku} - ${productName}`, req.user.userID);
+        // 3. Log initial stock transaction if stock > 0
+        if (parseInt(stock) > 0) {
+            const tr = new sql.Request(transaction);
+            tr.input('pid', sql.Int, productID);
+            tr.input('wid', sql.Int, warehouseID);
+            tr.input('qty', sql.Int, parseInt(stock));
+            tr.input('uid', sql.Int, req.user.userID);
+            await tr.query(`
+                INSERT INTO InventoryTransactions (ProductID, WarehouseID, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks, ReferenceType)
+                VALUES (@pid, @wid, 'ADJUSTMENT', @qty, GETDATE(), @uid, 'Initial Stock Load', 'Adjustment')
+            `);
+        }
+
+        await transaction.commit();
+        await addLog('SYNC', `New SKU added: ${sku} - ${productName} (Initial Stock: ${stock})`, req.user.userID);
         res.status(201).json({ success: true, productID });
     } catch (e) {
+        await transaction.rollback();
         if (e.message.includes('UNIQUE') || e.message.includes('duplicate')) return res.status(409).json({ error: 'SKU already exists.' });
         res.status(500).json({ error: e.message });
     }
@@ -756,9 +839,11 @@ app.post('/api/inventory', auth, async (req, res) => {
 // PUT /api/inventory/:id  — Update stock / product
 app.put('/api/inventory/:id', auth, async (req, res) => {
     const { id } = req.params;
-    const { stock, status, unitPrice } = req.body;
+    const { stock, status, unitPrice, productName, description } = req.body;
     try {
         const db = await getPool();
+        
+        // 1. Update Inventory Table (if stock changed)
         if (stock !== undefined) {
             const r = db.request();
             r.input('pid', sql.Int, parseInt(id));
@@ -769,13 +854,32 @@ app.put('/api/inventory/:id', auth, async (req, res) => {
             );
             await r.query('UPDATE Inventory SET QuantityOnHand = @qty, Status = @status, LastUpdated = GETDATE() WHERE ProductID = @pid');
         }
-        if (unitPrice !== undefined) {
+
+        // 2. Update Products Table (Metadata)
+        if (unitPrice !== undefined || productName || description !== undefined) {
             const r2 = db.request();
             r2.input('pid', sql.Int, parseInt(id));
-            r2.input('price', sql.Decimal(18,2), parseFloat(unitPrice));
-            await r2.query('UPDATE Products SET UnitPrice = @price WHERE ProductID = @pid');
+            
+            let updateFields = [];
+            if (unitPrice !== undefined) {
+                r2.input('price', sql.Decimal(18,2), parseFloat(unitPrice));
+                updateFields.push('UnitPrice = @price');
+            }
+            if (productName) {
+                r2.input('name', sql.NVarChar, productName);
+                updateFields.push('ProductName = @name');
+            }
+            if (description !== undefined) {
+                r2.input('desc', sql.NVarChar, description);
+                updateFields.push('Description = @desc');
+            }
+
+            if (updateFields.length > 0) {
+                await r2.query(`UPDATE Products SET ${updateFields.join(', ')} WHERE ProductID = @pid`);
+            }
         }
-        await addLog('SYNC', `Inventory updated for ProductID ${id}`, req.user.userID);
+
+        await addLog('SYNC', `Master Data / Inventory updated for ProductID ${id}`, req.user.userID);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -952,6 +1056,12 @@ app.post('/api/alerts', auth, async (req, res) => {
         const res2 = await r.query('INSERT INTO Alerts (AlertType, Category, Title, Description, RelatedID) OUTPUT INSERTED.AlertID VALUES (@type, @cat, @title, @desc, @rid)');
         res.status(201).json({ alertID: res2.recordset[0].AlertID });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── 404 HANDLER ─────────────────────────────────────────────────────────────
+app.use((req, res) => {
+    console.log(`⚠️ 404 Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ error: `Path ${req.url} with method ${req.method} not found on this server.` });
 });
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
