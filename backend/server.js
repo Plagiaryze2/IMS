@@ -297,16 +297,95 @@ app.get('/api/sales/invoices', auth, async (req, res) => {
 app.get('/api/shipments', auth, async (req, res) => {
     try {
         const db = await getPool();
-        const result = await db.request().query(`
-            SELECT so.SalesOrderID as id, c.CustomerName as customer, 'GLOBAL LOGISTICS' as carrier, 
-                   so.Status as status, 'Warehouse A' as location, 
-                   CONVERT(VARCHAR, DATEADD(day, 5, so.OrderDate), 104) as delivery
-            FROM SalesOrders so
+        const { search, status } = req.query;
+        let query = `
+            SELECT 
+                d.DeliveryID as id, 
+                c.CustomerName as customer, 
+                ISNULL(d.TrackingCode, 'GLOBAL LOGISTICS') as carrier, 
+                ISNULL(d.DeliveryStatus, 'Scheduled') as status, 
+                ISNULL(d.DestinationAddress, c.Address) as location, 
+                CONVERT(VARCHAR, ISNULL(d.DeliveryDate, DATEADD(day, 5, so.OrderDate)), 104) as delivery
+            FROM Deliveries d
+            JOIN SalesOrders so ON d.SalesOrderID = so.SalesOrderID
             JOIN Customers c ON so.CustomerID = c.CustomerID
-            ORDER BY so.OrderDate DESC
+            WHERE 1=1
+        `;
+
+        if (search) {
+            query += ` AND (c.CustomerName LIKE '%${search}%' OR d.TrackingCode LIKE '%${search}%' OR d.DeliveryID = '${search}')`;
+        }
+        if (status && status !== 'ALL') {
+            query += ` AND d.DeliveryStatus = '${status}'`;
+        }
+
+        query += ` ORDER BY so.OrderDate DESC`;
+
+        const deliveriesResult = await db.request().query(query);
+
+        // Get all history to build the timeline
+        const historyResult = await db.request().query(`
+            SELECT DeliveryID, Status as status, Location as location, 
+                   CONVERT(VARCHAR, Timestamp, 104) + ' ' + RIGHT(CONVERT(VARCHAR, Timestamp, 100), 7) as time,
+                   1 as completed
+            FROM DeliveryHistory
+            ORDER BY Timestamp ASC
         `);
-        res.json(result.recordset);
+
+        // Map history to deliveries
+        const shipments = deliveriesResult.recordset.map(d => {
+            const history = historyResult.recordset.filter(h => String(h.DeliveryID) === String(d.id));
+            // Set the last item as current
+            if (history.length > 0) {
+                history[history.length - 1].current = true;
+                history[history.length - 1].completed = false;
+                d.status = history[history.length - 1].status;
+                d.location = history[history.length - 1].location || d.location;
+            }
+            return {
+                ...d,
+                timeline: history.length > 0 ? history : undefined
+            };
+        });
+
+        res.json(shipments);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/shipments/:id/tracking
+app.post('/api/shipments/:id/tracking', auth, async (req, res) => {
+    const { status, location, notes } = req.body;
+    const deliveryId = req.params.id;
+
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    const transaction = new sql.Transaction(await getPool());
+    try {
+        await transaction.begin();
+        
+        // 1. Update Deliveries table DeliveryStatus
+        const updateReq = new sql.Request(transaction);
+        updateReq.input('did', sql.Int, deliveryId);
+        updateReq.input('status', sql.NVarChar, status);
+        await updateReq.query(`UPDATE Deliveries SET DeliveryStatus = @status WHERE DeliveryID = @did`);
+
+        // 2. Insert into DeliveryHistory
+        const insertReq = new sql.Request(transaction);
+        insertReq.input('did', sql.Int, deliveryId);
+        insertReq.input('status', sql.NVarChar, status);
+        insertReq.input('loc', sql.NVarChar, location || null);
+        insertReq.input('notes', sql.NVarChar, notes || null);
+        await insertReq.query(`
+            INSERT INTO DeliveryHistory (DeliveryID, Status, Location, Notes, Timestamp) 
+            VALUES (@did, @status, @loc, @notes, GETDATE())
+        `);
+
+        await transaction.commit();
+        res.json({ message: 'Tracking updated successfully' });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // POST /api/sales/invoice
@@ -319,10 +398,8 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
         await transaction.begin();
         const r = new sql.Request(transaction);
 
-        // 1. Calculate total
         const total = items.reduce((acc, item) => acc + (item.qty * item.price), 0);
 
-        // 2. Create Sales Order
         r.input('cid', sql.Int, customerID);
         r.input('uid', sql.Int, req.user.userID);
         r.input('total', sql.Decimal(18,2), total);
@@ -333,7 +410,6 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
         `);
         const salesOrderID = soRes.recordset[0].SalesOrderID;
 
-        // 3. Create Invoice
         const ir = new sql.Request(transaction);
         ir.input('soid', sql.Int, salesOrderID);
         ir.input('cid', sql.Int, customerID);
@@ -347,7 +423,6 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
         `);
         const invoiceID = invRes.recordset[0].InvoiceID;
 
-        // 4. Create items and update inventory
         for (const item of items) {
             const itr = new sql.Request(transaction);
             itr.input('iid', sql.Int, invoiceID);
@@ -359,7 +434,6 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
                 VALUES (@iid, @pid, @qty, @price, @qty * @price)
             `);
 
-            // Update Stock
             const sur = new sql.Request(transaction);
             sur.input('pid', sql.Int, item.productID);
             sur.input('qty', sql.Int, item.qty);
@@ -375,6 +449,48 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
     }
 });
 
+// POST /api/sales/invoice/:id/ship
+app.post('/api/sales/invoice/:id/ship', auth, async (req, res) => {
+    const { id } = req.params;
+    const transaction = new sql.Transaction(await getPool());
+    try {
+        await transaction.begin();
+        const r = new sql.Request(transaction);
+        r.input('iid', sql.Int, id);
+        
+        const invRes = await r.query('SELECT SalesOrderID, CustomerID FROM Invoices WHERE InvoiceID = @iid');
+        if (invRes.recordset.length === 0) throw new Error('Invoice not found');
+        const { SalesOrderID, CustomerID } = invRes.recordset[0];
+        
+        const custRes = await r.query(`SELECT Address FROM Customers WHERE CustomerID = ${CustomerID}`);
+        const destinationAddress = custRes.recordset[0]?.Address || 'Customer Address';
+
+        const shipCheck = await r.query(`SELECT 1 FROM Deliveries WHERE SalesOrderID = ${SalesOrderID}`);
+        if (shipCheck.recordset.length > 0) throw new Error('Order already shipped');
+
+        const dr = new sql.Request(transaction);
+        dr.input('soid', sql.Int, SalesOrderID);
+        dr.input('uid', sql.Int, req.user.userID);
+        dr.input('addr', sql.NVarChar, destinationAddress);
+        const dRes = await dr.query(`
+            INSERT INTO Deliveries (SalesOrderID, WarehouseID, DispatchedByUserID, DeliveryDate, TrackingCode, DeliveryStatus, DestinationAddress)
+            OUTPUT INSERTED.DeliveryID
+            VALUES (@soid, 1, @uid, GETDATE(), 'TRK-' + CAST(ABS(CHECKSUM(NEWID())) % 1000000 AS VARCHAR), 'Scheduled', @addr)
+        `);
+        const deliveryID = dRes.recordset[0].DeliveryID;
+
+        const hr = new sql.Request(transaction);
+        hr.input('did', sql.Int, deliveryID);
+        await hr.query(`INSERT INTO DeliveryHistory (DeliveryID, Status, Location, Timestamp) VALUES (@did, 'Scheduled', 'Warehouse A', GETDATE())`);
+
+        await transaction.commit();
+        res.json({ success: true, deliveryID });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // GET /api/sales/invoice/:id
 app.get('/api/sales/invoice/:id', auth, async (req, res) => {
     const { id } = req.params;
@@ -383,8 +499,8 @@ app.get('/api/sales/invoice/:id', auth, async (req, res) => {
         const invoice = await db.request().input('id', sql.Int, id).query(`
             SELECT i.*, c.CustomerName, c.Email, c.Phone, c.Address, so.OrderDate
             FROM Invoices i
-            JOIN Customers c ON i.CustomerID = c.CustomerID
-            JOIN SalesOrders so ON i.SalesOrderID = so.SalesOrderID
+            LEFT JOIN Customers c ON i.CustomerID = c.CustomerID
+            LEFT JOIN SalesOrders so ON i.SalesOrderID = so.SalesOrderID
             WHERE i.InvoiceID = @id
         `);
         

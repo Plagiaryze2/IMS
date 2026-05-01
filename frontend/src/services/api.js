@@ -75,7 +75,9 @@ export const salesAPI = {
   getInvoice: (id) => request(`/sales/invoice/${id}`),
   createInvoice: (data) => request('/sales/invoice', { method: 'POST', body: data }),
   updateStatus: (id, status) => request(`/sales/invoice/${id}/status`, { method: 'PATCH', body: { status } }),
-  getShipments: () => request('/shipments'),
+  getShipments: (params) => request(`/shipments?search=${params?.search || ''}&status=${params?.status || 'ALL'}`),
+  updateTracking: (id, data) => request(`/shipments/${id}/tracking`, { method: 'POST', body: data }),
+  shipInvoice: (id) => request(`/sales/invoice/${id}/ship`, { method: 'POST' }),
 };
 
 // ─── Procurement ──────────────────────────────────────────────────────────

@@ -18,7 +18,8 @@ import {
   MoreVertical,
   X,
   CreditCard,
-  History
+  History,
+  Truck
 } from 'lucide-react';
 import { salesAPI } from '../../services/api';
 import Swal from 'sweetalert2';
@@ -70,6 +71,41 @@ const UserSales = () => {
       Swal.fire('Success', `Invoice marked as ${status}`, 'success');
     } catch (e) {
       Swal.fire('Error', 'Failed to update status.', 'error');
+    }
+  };
+
+  const handleShipOrder = async (id) => {
+    try {
+      Swal.fire({
+        title: 'Creating Shipment...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      await salesAPI.shipInvoice(id);
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'ORDER SHIPPED',
+        text: 'A new delivery has been created and assigned a tracking code.',
+        showCancelButton: true,
+        confirmButtonText: 'TRACK NOW',
+        cancelButtonText: 'STAY HERE',
+        confirmButtonColor: '#000',
+        customClass: {
+          confirmButton: 'rounded-none font-black text-[10px] tracking-widest uppercase px-6 py-3',
+          cancelButton: 'rounded-none font-black text-[10px] tracking-widest uppercase px-6 py-3'
+        }
+      }).then((result) => {
+        if (result.isConfirmed) {
+          navigate('/user/tracking');
+        } else {
+          fetchInvoices();
+          handleViewDetails(id);
+        }
+      });
+    } catch (e) {
+      Swal.fire('Error', e.message || 'Failed to create shipment.', 'error');
     }
   };
 
@@ -188,6 +224,12 @@ const UserSales = () => {
                   </button>
                   <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-black hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
                      Email Customer <Mail size={14} />
+                  </button>
+                  <button 
+                     onClick={() => handleShipOrder(selectedInvoice.InvoiceID)}
+                     className="w-full flex items-center justify-between px-4 py-3 bg-[#047857] text-white hover:bg-[#059669] transition-all text-[10px] font-black uppercase tracking-widest"
+                  >
+                     Ship Order <Truck size={14} />
                   </button>
                </div>
 
