@@ -217,9 +217,8 @@ const UserWarehouse = () => {
       {/* Warehouse Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {warehouses.map((wh) => {
-          // Dummy calculation for occupancy since we don't have max capacity
-          const estimatedMax = 10000; 
-          const rawOccupancy = Math.min(((wh.totalOccupancy || 0) / estimatedMax) * 100, 100);
+          const maxCap = wh.MaxCapacity || 10000;
+          const rawOccupancy = Math.min(((wh.totalOccupancy || 0) / maxCap) * 100, 100);
           const occupancy = parseInt(rawOccupancy);
           
           return (
