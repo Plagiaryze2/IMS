@@ -79,7 +79,13 @@ export const salesAPI = {
 // ─── Procurement ──────────────────────────────────────────────────────────
 export const procurementAPI = {
   getSuppliers: () => request('/suppliers'),
+  createSupplier: (data) => request('/suppliers', { method: 'POST', body: data }),
+  updateSupplier: (id, data) => request(`/suppliers/${id}`, { method: 'PUT', body: data }),
+  deleteSupplier: (id) => request(`/suppliers/${id}`, { method: 'DELETE' }),
+  getOrders: () => request('/purchase-orders'),
+  getOrderDetails: (id) => request(`/purchase-orders/${id}`),
   createOrder: (data) => request('/purchase-orders', { method: 'POST', body: data }),
+  updateOrderStatus: (id, status) => request(`/purchase-orders/${id}/status`, { method: 'PATCH', body: { status } }),
 };
 
 // ─── Warehouse ────────────────────────────────────────────────────────────

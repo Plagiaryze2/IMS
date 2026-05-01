@@ -11,68 +11,136 @@ import {
   Calendar,
   DollarSign,
   Truck,
-  Loader2
+  Loader2,
+  Edit2,
+  Trash2,
+  MapPin,
+  Save,
+  CheckCircle2
 } from 'lucide-react';
 import { procurementAPI } from '../../services/api';
+import Swal from 'sweetalert2';
 
 const UserSuppliers = () => {
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    id: null,
+    name: '',
+    contact: '',
+    phone: '',
+    email: '',
+    address: ''
+  });
 
   useEffect(() => {
-    const fetchSuppliers = async () => {
-      try {
-        const data = await procurementAPI.getSuppliers();
-        // Map backend fields to frontend fields
-        const mapped = data.map(s => ({
-          id: `V-${s.SupplierID}`,
-          SupplierID: s.SupplierID,
-          name: s.SupplierName,
-          category: 'INDUSTRIAL',
-          contact: s.ContactName,
-          email: `${s.ContactName.toLowerCase().replace(' ', '.')}@example.com`,
-          leadTime: '3-5 Days',
-          rating: '98%',
-          status: 'ACTIVE',
-          spend: '$0',
-          onTime: '100%',
-          terms: 'Net 30'
-        }));
-        setSuppliers(mapped);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchSuppliers();
   }, []);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
-
-  const getStatusBadge = (status) => {
-    const baseClass = "px-2 py-1 text-[9px] font-black border rounded-sm tracking-tighter uppercase whitespace-nowrap";
-    switch (status) {
-      case 'ACTIVE':
-        return <span className={`${baseClass} text-[#047857] bg-green-50 border-green-200`}>ACTIVE</span>;
-      case 'INACTIVE':
-        return <span className={`${baseClass} text-gray-400 bg-gray-50 border-gray-200`}>INACTIVE</span>;
-      case 'UNDER REVIEW':
-        return <span className={`${baseClass} text-red-600 bg-red-50 border-red-200`}>UNDER REVIEW</span>;
-      default:
-        return <span className={`${baseClass} text-gray-400 bg-gray-50 border-gray-200`}>{status}</span>;
+  const fetchSuppliers = async () => {
+    try {
+      setLoading(true);
+      const data = await procurementAPI.getSuppliers();
+      setSuppliers(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleOpenModal = (supplier = null) => {
+    if (supplier) {
+      setIsEditing(true);
+      setFormData({
+        id: supplier.SupplierID,
+        name: supplier.SupplierName,
+        contact: supplier.ContactName,
+        phone: supplier.Phone,
+        email: supplier.Email || '',
+        address: supplier.Address || ''
+      });
+    } else {
+      setIsEditing(false);
+      setFormData({
+        id: null,
+        name: '',
+        contact: '',
+        phone: '',
+        email: '',
+        address: ''
+      });
+    }
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      Swal.fire({ title: 'Saving...', didOpen: () => Swal.showLoading() });
+      if (isEditing) {
+        await procurementAPI.updateSupplier(formData.id, formData);
+        Swal.fire('Updated', 'Supplier details updated.', 'success');
+      } else {
+        await procurementAPI.createSupplier(formData);
+        Swal.fire('Created', 'New supplier added.', 'success');
+      }
+      setShowModal(false);
+      fetchSuppliers();
+    } catch (e) {
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const result = await Swal.fire({
+      title: 'Delete Supplier?',
+      text: 'This action cannot be undone if no orders exist.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      confirmButtonText: 'Yes, delete'
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await procurementAPI.deleteSupplier(id);
+        Swal.fire('Deleted', 'Supplier removed.', 'success');
+        fetchSuppliers();
+      } catch (e) {
+        Swal.fire('Error', e.message, 'error');
+      }
+    }
+  };
+
+  const filteredSuppliers = suppliers.filter(s => 
+    s.SupplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.ContactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.Email && s.Email.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
+
   return (
-    <div className="flex h-full bg-[#fafafa]">
+    <div className="flex h-full bg-[#fafafa] font-sans">
       {/* Main Content Area */}
       <div className={`flex-1 p-8 transition-all duration-300 ${selectedVendor ? 'mr-[400px]' : ''}`}>
         {/* Header */}
         <div className="flex justify-between items-center border-b border-gray-200 pb-8 mb-8">
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Vendor Directory</h1>
-          <button className="bg-[#047857] text-white px-6 py-3 text-[10px] font-black tracking-widest uppercase flex items-center gap-2 hover:bg-[#059669] transition-all">
+          <div>
+            <h1 className="text-4xl font-black text-gray-900 tracking-tight uppercase">Vendor Directory</h1>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Manage global supply chain partnerships.</p>
+          </div>
+          <button 
+            onClick={() => handleOpenModal()}
+            className="bg-[#047857] text-white px-8 py-3 text-[10px] font-black tracking-widest uppercase flex items-center gap-2 hover:bg-[#059669] transition-all shadow-lg shadow-green-900/10"
+          >
             <Plus size={14} /> Add New Supplier
           </button>
         </div>
@@ -83,58 +151,60 @@ const UserSuppliers = () => {
             <Search size={16} className="absolute left-4 top-3.5 text-gray-400" />
             <input 
               type="text" 
-              placeholder="Search suppliers..."
-              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 text-sm font-bold focus:outline-none focus:border-black"
+              placeholder="SEARCH BY NAME, CONTACT OR EMAIL..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 text-xs font-bold focus:outline-none focus:border-black uppercase tracking-widest"
             />
           </div>
-          <button className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-200 text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
-            <Filter size={14} /> Filter
-          </button>
         </div>
 
         {/* Table */}
-        <div className="bg-white border border-gray-200">
+        <div className="bg-white border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50">
-                  <th className="px-6 py-4">Supplier Name</th>
-                  <th className="px-6 py-4">Category</th>
-                  <th className="px-6 py-4">Contact</th>
-                  <th className="px-6 py-4">Lead Time</th>
-                  <th className="px-6 py-4">Rating [QS%]</th>
+                <tr className="border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50/50">
+                  <th className="px-6 py-4">Vendor Info</th>
+                  <th className="px-6 py-4">Primary Contact</th>
                   <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {suppliers.map((s) => (
+                {filteredSuppliers.map((s) => (
                   <tr 
-                    key={s.id} 
+                    key={s.SupplierID} 
+                    className={`hover:bg-gray-50 transition-colors cursor-pointer group ${selectedVendor?.SupplierID === s.SupplierID ? 'bg-gray-50' : ''}`}
                     onClick={() => setSelectedVendor(s)}
-                    className={`hover:bg-gray-50 transition-colors cursor-pointer group ${selectedVendor?.id === s.id ? 'bg-gray-50' : ''}`}
                   >
-                    <td className="px-6 py-5">
-                      <p className="text-xs font-black text-gray-900">{s.name}</p>
-                      <p className="text-[9px] font-mono text-gray-400 uppercase mt-0.5">{s.id}</p>
+                    <td className="px-6 py-5 text-sm font-bold text-gray-900 uppercase tracking-tighter">
+                      {s.SupplierName}
+                      <p className="text-[10px] font-mono text-gray-400 font-normal uppercase tracking-normal mt-0.5">{s.Email || 'No Email'}</p>
                     </td>
-                    <td className="px-6 py-5 text-xs font-bold text-gray-500">{s.category}</td>
                     <td className="px-6 py-5">
-                      <p className="text-xs font-bold text-gray-700">{s.contact}</p>
-                      <p className="text-[10px] font-medium text-gray-400">{s.email}</p>
+                      <p className="text-xs font-black text-gray-700 uppercase">{s.ContactName}</p>
+                      <p className="text-[10px] text-gray-400 font-mono">{s.Phone}</p>
                     </td>
-                    <td className="px-6 py-5 text-xs font-mono text-gray-400">{s.leadTime}</td>
                     <td className="px-6 py-5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-[#047857]">{s.rating}</span>
-                        <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-[#047857]" 
-                            style={{ width: s.rating }}
-                          ></div>
-                        </div>
+                       <span className="px-2 py-1 text-[9px] font-black border rounded-sm tracking-tighter uppercase text-[#047857] bg-green-50 border-green-200">ACTIVE</span>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button 
+                           onClick={(e) => { e.stopPropagation(); handleOpenModal(s); }}
+                           className="p-1.5 text-gray-400 hover:text-black transition-colors"
+                         >
+                           <Edit2 size={14} />
+                         </button>
+                         <button 
+                           onClick={(e) => { e.stopPropagation(); handleDelete(s.SupplierID); }}
+                           className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                         >
+                           <Trash2 size={14} />
+                         </button>
                       </div>
                     </td>
-                    <td className="px-6 py-5">{getStatusBadge(s.status)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -143,85 +213,146 @@ const UserSuppliers = () => {
         </div>
       </div>
 
-      {/* Vendor Detail Sidebar */}
+      {/* Detail Sidebar */}
       {selectedVendor && (
-        <div className="fixed right-0 top-20 bottom-0 w-[400px] bg-white border-l border-gray-200 shadow-2xl z-40 animate-in slide-in-from-right duration-300 overflow-y-auto">
-          <div className="p-8 space-y-8">
-            {/* Sidebar Header */}
-            <div className="flex justify-between items-start">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 leading-tight">{selectedVendor.name}</h2>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Vendor ID: {selectedVendor.id}</p>
+        <div className="fixed right-0 top-20 bottom-0 w-[400px] bg-white border-l border-gray-200 p-8 overflow-y-auto animate-in slide-in-from-right duration-300 z-40 shadow-2xl">
+          <div className="flex justify-between items-start mb-10">
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase leading-none">Vendor Profile</h2>
+            <button onClick={() => setSelectedVendor(null)} className="text-gray-400 hover:text-black"><X size={20} /></button>
+          </div>
+
+          <div className="space-y-10">
+            <div>
+              <div className="w-16 h-16 bg-gray-50 border border-gray-200 flex items-center justify-center text-2xl font-black text-gray-400 mb-4 uppercase">
+                {selectedVendor.SupplierName.charAt(0)}
               </div>
-              <button 
-                onClick={() => setSelectedVendor(null)}
-                className="p-1 hover:bg-gray-100 transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{selectedVendor.SupplierName}</h3>
+              <p className="text-[10px] font-black text-[#047857] uppercase tracking-widest mt-1">Contracted Supplier</p>
             </div>
 
-            {/* Vendor Summary */}
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em] border-b border-gray-100 pb-2">Vendor Summary</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total Spend (YTD)</p>
-                  <p className="text-lg font-black text-gray-900 mt-1">{selectedVendor.spend || '$0'}</p>
+            <div className="grid grid-cols-1 gap-6 pt-10 border-t border-gray-100">
+              <div className="flex items-center gap-4 group">
+                <div className="p-3 bg-gray-50 border border-gray-200 text-gray-400 group-hover:bg-black group-hover:text-white transition-all">
+                  <Mail size={16} />
                 </div>
-                <div className="p-4 bg-gray-50 border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">On-Time Delivery</p>
-                  <p className="text-lg font-black text-[#047857] mt-1">{selectedVendor.onTime || '0%'}</p>
-                </div>
-                <div className="p-4 bg-gray-50 border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Payment Terms</p>
-                  <p className="text-[10px] font-bold text-gray-700 mt-1">{selectedVendor.terms || 'N/A'}</p>
-                </div>
-                <div className="p-4 bg-gray-50 border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Primary Contact</p>
-                  <p className="text-[10px] font-bold text-gray-700 mt-1">{selectedVendor.contact}</p>
+                <div>
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Email Address</p>
+                  <p className="text-sm font-bold text-gray-900">{selectedVendor.Email || 'NOT SET'}</p>
                 </div>
               </div>
-            </div>
 
-            {/* Recent Transactions */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">Recent Transactions</h3>
-                <button className="text-[9px] font-black text-[#047857] uppercase tracking-widest hover:underline">View All</button>
+              <div className="flex items-center gap-4 group">
+                <div className="p-3 bg-gray-50 border border-gray-200 text-gray-400 group-hover:bg-black group-hover:text-white transition-all">
+                  <Phone size={16} />
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Phone Line</p>
+                  <p className="text-sm font-bold text-gray-900">{selectedVendor.Phone}</p>
+                </div>
               </div>
-              <div className="space-y-3">
-                {[
-                  { id: 'PO-2023-4921', item: 'Microcontrollers (x5000)', date: 'Oct 12, 2023', amount: '$45,000.00', status: 'DELIVERED' },
-                  { id: 'PO-2023-4880', item: 'Capacitors & Resistors Kit', date: 'Oct 05, 2023', amount: '$12,450.00', status: 'IN TRANSIT' },
-                  { id: 'PO-2023-4712', item: 'PCB Boards (Custom)', date: 'Sep 28, 2023', amount: '$89,200.00', status: 'DELIVERED' },
-                ].map((po) => (
-                  <div key={po.id} className="p-4 border border-gray-100 hover:border-gray-300 transition-all">
-                    <div className="flex justify-between items-start mb-2">
-                      <p className="text-[10px] font-black text-gray-900 uppercase">{po.id}</p>
-                      <span className={`text-[8px] font-black px-2 py-0.5 border rounded-sm ${
-                        po.status === 'DELIVERED' ? 'text-[#047857] border-green-200 bg-green-50' : 'text-blue-600 border-blue-200 bg-blue-50'
-                      }`}>
-                        {po.status}
-                      </span>
-                    </div>
-                    <p className="text-[11px] font-bold text-gray-700">{po.item}</p>
-                    <div className="flex justify-between items-center mt-2">
-                      <p className="text-[10px] font-medium text-gray-400">{po.date}</p>
-                      <p className="text-[10px] font-black text-gray-900">{po.amount}</p>
-                    </div>
-                  </div>
-                ))}
+
+              <div className="flex items-center gap-4 group">
+                <div className="p-3 bg-gray-50 border border-gray-200 text-gray-400 group-hover:bg-black group-hover:text-white transition-all">
+                  <MapPin size={16} />
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">HQ Address</p>
+                  <p className="text-sm font-bold text-gray-900 leading-tight">{selectedVendor.Address || 'GLOBAL DISTRIBUTION HUB'}</p>
+                </div>
               </div>
             </div>
 
-            {/* Profile Button */}
-            <button className="w-full py-5 bg-black text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-zinc-800 transition-all flex items-center justify-center gap-2">
-              View Full Vendor Profile <ChevronRight size={14} />
-            </button>
+            <div className="pt-10 border-t border-gray-100">
+               <button className="w-full py-4 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all flex items-center justify-center gap-3">
+                 <ExternalLink size={14} /> View Order History
+               </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Add/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase">
+                {isEditing ? 'Update Vendor' : 'New Supplier'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-gray-200 transition-colors"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Supplier Name</label>
+                <input 
+                  required
+                  type="text" 
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full border-b-2 border-gray-200 py-2 text-sm font-bold focus:outline-none focus:border-[#047857]"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contact Name</label>
+                  <input 
+                    required
+                    type="text" 
+                    value={formData.contact}
+                    onChange={(e) => setFormData({...formData, contact: e.target.value})}
+                    className="w-full border-b-2 border-gray-200 py-2 text-sm font-bold focus:outline-none focus:border-[#047857]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Phone Number</label>
+                  <input 
+                    required
+                    type="text" 
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                    className="w-full border-b-2 border-gray-200 py-2 text-sm font-bold focus:outline-none focus:border-[#047857]"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Email Address</label>
+                <input 
+                  type="email" 
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full border-b-2 border-gray-200 py-2 text-sm font-bold focus:outline-none focus:border-[#047857]"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Office Address</label>
+                <textarea 
+                  value={formData.address}
+                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  className="w-full border-b-2 border-gray-200 py-2 text-sm font-bold focus:outline-none focus:border-[#047857] resize-none h-20"
+                ></textarea>
+              </div>
+
+              <div className="pt-6 flex justify-end gap-4">
+                <button 
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="bg-[#047857] text-white px-10 py-3 text-[10px] font-black tracking-widest uppercase hover:bg-[#059669] transition-all flex items-center gap-2"
+                >
+                  <Save size={14} /> {isEditing ? 'Save Changes' : 'Register Vendor'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
