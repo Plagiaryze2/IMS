@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AreaChart, 
   Area, 
@@ -24,7 +24,27 @@ import {
   MoreVertical
 } from 'lucide-react';
 
+import { reportsAPI } from '../../services/api';
+import { Loader2 } from 'lucide-react';
+
 const UserReports = () => {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const data = await reportsAPI.getStats();
+        setStats(data);
+      } catch (e) {
+        console.error('Failed to fetch report stats:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
+  }, []);
+
   const salesData = [
     { name: '01', value: 400 },
     { name: '05', value: 800 },
@@ -45,19 +65,15 @@ const UserReports = () => {
   const COLORS = ['#047857', '#64748b', '#94a3b8', '#e2e8f0'];
 
   const kpis = [
-    { title: 'Total Revenue', value: '$1,245,890.00', trend: '+14.2%', up: true, icon: <DollarSign size={20} /> },
-    { title: 'Gross Profit', value: '$415,230.00', trend: '+8.7%', up: true, icon: <Briefcase size={20} /> },
-    { title: 'Active Orders', value: '1,432', trend: '-2.1%', up: false, icon: <ShoppingCart size={20} /> },
-    { title: 'Inventory Valuation', value: '$3,890,150.00', trend: '0.0%', up: null, icon: <Box size={20} /> },
+    { title: 'Total Revenue', value: stats?.kpis?.totalRevenue ? `$${parseFloat(stats.kpis.totalRevenue).toLocaleString()}` : '$0.00', trend: '+14.2%', up: true, icon: <DollarSign size={20} /> },
+    { title: 'Pending Revenue', value: stats?.kpis?.pendingRevenue ? `$${parseFloat(stats.kpis.pendingRevenue).toLocaleString()}` : '$0.00', trend: '+8.7%', up: true, icon: <Briefcase size={20} /> },
+    { title: 'Active Orders', value: stats?.kpis?.activeOrders || '0', trend: '-2.1%', up: false, icon: <ShoppingCart size={20} /> },
+    { title: 'Inventory Valuation', value: stats?.kpis?.inventoryValue ? `$${(stats.kpis.inventoryValue / 1000000).toFixed(2)}M` : '$0.00M', trend: '0.0%', up: null, icon: <Box size={20} /> },
   ];
 
-  const topProducts = [
-    { name: 'PRO-X SERVER BLADE', units: '1,204', percent: 85 },
-    { name: 'QUANTUM ROUTER V4', units: '960', percent: 70 },
-    { name: 'FIBER OPTIC CABLE (100M)', units: '845', percent: 60 },
-    { name: 'COOLING MODULE AX', units: '620', percent: 45 },
-    { name: 'POWER SUPPLY 1000W', units: '410', percent: 30 },
-  ];
+  const topProducts = stats?.topProducts || [];
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
 
   const lowVelocity = [
     { sku: 'HW-772-A', name: 'Legacy IDE Controller', cat: 'HARDWARE', qty: 165, value: '$3,625.00', days: 124 },

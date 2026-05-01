@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Plus, 
@@ -10,67 +10,46 @@ import {
   Phone,
   Calendar,
   DollarSign,
-  Truck
+  Truck,
+  Loader2
 } from 'lucide-react';
+import { procurementAPI } from '../../services/api';
 
 const UserSuppliers = () => {
   const [selectedVendor, setSelectedVendor] = useState(null);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const suppliers = [
-    { 
-      id: 'V-10492', 
-      name: 'ElectroTech Components Ltd.', 
-      category: 'Electronics', 
-      contact: 'Sarah Jenkins', 
-      email: 'sarah@electrotech.com',
-      leadTime: '3-5 Days', 
-      rating: '98.5%', 
-      status: 'ACTIVE',
-      spend: '$1.2M',
-      onTime: '98%',
-      terms: 'Net 30'
-    },
-    { 
-      id: 'V-22810', 
-      name: 'Global Steel & Alloy', 
-      category: 'Raw Materials', 
-      contact: 'Marcus Chen', 
-      email: 'm.chen@globalsteel.com',
-      leadTime: '10-14 Days', 
-      rating: '94.2%', 
-      status: 'ACTIVE' 
-    },
-    { 
-      id: 'V-11005', 
-      name: 'Precision Plastics Inc.', 
-      category: 'Packaging', 
-      contact: 'David Miller', 
-      email: 'david@precisionplastics.net',
-      leadTime: '5-7 Days', 
-      rating: '88.0%', 
-      status: 'INACTIVE' 
-    },
-    { 
-      id: 'V-34901', 
-      name: 'Apex Logistics & Supply', 
-      category: 'Logistics', 
-      contact: 'Elena Rodriguez', 
-      email: 'elena.r@apexlogistics.com',
-      leadTime: '1-2 Days', 
-      rating: '99.1%', 
-      status: 'ACTIVE' 
-    },
-    { 
-      id: 'V-00982', 
-      name: 'Nexus Semiconductor', 
-      category: 'Electronics', 
-      contact: 'James Wong', 
-      email: 'jwong@nexus-semi.co',
-      leadTime: '14-21 Days', 
-      rating: '76.4%', 
-      status: 'UNDER REVIEW' 
-    },
-  ];
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      try {
+        const data = await procurementAPI.getSuppliers();
+        // Map backend fields to frontend fields
+        const mapped = data.map(s => ({
+          id: `V-${s.SupplierID}`,
+          SupplierID: s.SupplierID,
+          name: s.SupplierName,
+          category: 'INDUSTRIAL',
+          contact: s.ContactName,
+          email: `${s.ContactName.toLowerCase().replace(' ', '.')}@example.com`,
+          leadTime: '3-5 Days',
+          rating: '98%',
+          status: 'ACTIVE',
+          spend: '$0',
+          onTime: '100%',
+          terms: 'Net 30'
+        }));
+        setSuppliers(mapped);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSuppliers();
+  }, []);
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
 
   const getStatusBadge = (status) => {
     const baseClass = "px-2 py-1 text-[9px] font-black border rounded-sm tracking-tighter uppercase whitespace-nowrap";

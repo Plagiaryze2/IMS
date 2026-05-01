@@ -48,6 +48,11 @@ export const dashboardAPI = {
   addLog:   (message) => request('/dashboard/logs', { method: 'POST', body: { message } }),
 };
 
+export const userDashboardAPI = {
+  getSummary:  () => request('/user/dashboard/stats'),
+  getActivity: () => request('/user/dashboard/activity'),
+};
+
 // ─── Inventory ────────────────────────────────────────────────────────────
 export const inventoryAPI = {
   getAll: (params = {}) => {
@@ -57,7 +62,33 @@ export const inventoryAPI = {
   getCategories: () => request('/inventory/categories'),
   create:  (data) => request('/inventory', { method: 'POST', body: data }),
   update:  (id, data) => request(`/inventory/${id}`, { method: 'PUT', body: data }),
+  adjust:  (data) => request('/inventory/adjust', { method: 'PATCH', body: data }),
   remove:  (id) => request(`/inventory/${id}`, { method: 'DELETE' }),
+};
+
+// ─── Sales ────────────────────────────────────────────────────────────────
+export const salesAPI = {
+  getCustomers: () => request('/customers'),
+  getInvoices: (params) => request(`/sales/invoices?${new URLSearchParams(params)}`),
+  createInvoice: (data) => request('/sales/invoice', { method: 'POST', body: data }),
+  getShipments: () => request('/shipments'),
+};
+
+// ─── Procurement ──────────────────────────────────────────────────────────
+export const procurementAPI = {
+  getSuppliers: () => request('/suppliers'),
+  createOrder: (data) => request('/purchase-orders', { method: 'POST', body: data }),
+};
+
+// ─── Warehouse ────────────────────────────────────────────────────────────
+export const warehouseAPI = {
+  getInventoryByAisle: (aisle) => request(`/warehouse/inventory?aisle=${aisle}`),
+  transfer: (data) => request('/warehouse/transfer', { method: 'POST', body: data }),
+};
+
+// ─── Analytics ────────────────────────────────────────────────────────────
+export const reportsAPI = {
+  getStats: () => request('/user/reports/stats'),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────

@@ -19,22 +19,23 @@ const UserLogin = () => {
     try {
       // In our backend, username can be email
       const data = await authAPI.login(credentials.email, credentials.password);
+      
+      // Check role - if admin, reject
+      if (data.user.role === 'Administrator') {
+        throw new Error('Access Denied: Administrators must log in through the Admin Portal.');
+      }
+      
       login(data.user, data.token);
       
-      // Check role - if admin, go to dashboard, else maybe a welcome page?
-      if (data.user.role === 'Administrator') {
-        navigate('/dashboard');
-      } else {
-        Swal.fire({
-          icon: 'success',
-          title: 'Access Granted',
-          text: `Welcome back, ${data.user.fullName || data.user.username}.`,
-          timer: 2000,
-          showConfirmButton: false
-        });
-        navigate('/user/dashboard');
+      Swal.fire({
+        icon: 'success',
+        title: 'Access Granted',
+        text: `Welcome back, ${data.user.fullName || data.user.username}.`,
+        timer: 2000,
+        showConfirmButton: false
+      });
+      navigate('/user/dashboard');
 
-      }
     } catch (err) {
       setError(err.message || 'Authentication failed. Check your credentials.');
     } finally {

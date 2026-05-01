@@ -25,6 +25,12 @@ const UserInventory = () => {
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [showAdjustment, setShowAdjustment] = useState(false);
+  const [adjustmentData, setAdjustmentData] = useState({
+    productID: '',
+    type: 'ADD',
+    quantity: 1,
+    reason: 'Inventory Count'
+  });
 
   useEffect(() => {
     fetchInventory();
@@ -41,6 +47,37 @@ const UserInventory = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAdjustSubmit = async () => {
+    if (!adjustmentData.productID) {
+      Swal.fire('Error', 'Please select a product first', 'error');
+      return;
+    }
+    try {
+      await inventoryAPI.adjust(adjustmentData);
+      Swal.fire({
+        title: 'Success!',
+        text: 'Inventory adjusted successfully',
+        icon: 'success',
+        confirmButtonColor: '#047857'
+      });
+      setShowAdjustment(false);
+      fetchInventory();
+    } catch (err) {
+      Swal.fire('Error', err.message, 'error');
+    }
+  };
+
+  const openAdjustForProduct = (item) => {
+    setAdjustmentData({
+      productID: item.ProductID,
+      type: 'ADD',
+      quantity: 1,
+      reason: 'Inventory Count',
+      productName: item.ProductName // Helper for the UI
+    });
+    setShowAdjustment(true);
   };
 
   const getStatusBadge = (status) => {
@@ -162,7 +199,7 @@ const UserInventory = () => {
                     <td className="px-6 py-5 text-right space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button className="p-1.5 text-gray-400 hover:text-black transition-colors"><Eye size={14} /></button>
                       <button 
-                        onClick={() => setShowAdjustment(true)}
+                        onClick={() => openAdjustForProduct(item)}
                         className="p-1.5 text-gray-400 hover:text-[#047857] transition-colors"
                       >
                         <Edit2 size={14} />
@@ -176,16 +213,20 @@ const UserInventory = () => {
           </div>
           <div className="border-t border-gray-100 p-6 flex justify-between items-center bg-gray-50/50">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              Showing 1-{items.length} of {totalRecords} records
+              Showing {((page-1)*10)+1}-{Math.min(page*10, totalRecords)} of {totalRecords} records
             </p>
             <div className="flex gap-px bg-gray-200 border border-gray-200">
               <button className="bg-white p-2 text-gray-400 hover:text-black transition-colors disabled:opacity-30" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
                 <ChevronLeft size={16} />
               </button>
-              <button className={`px-4 py-2 text-[10px] font-black ${page === 1 ? 'bg-[#047857] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>1</button>
-              <button className={`px-4 py-2 text-[10px] font-black ${page === 2 ? 'bg-[#047857] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>2</button>
-              <button className={`px-4 py-2 text-[10px] font-black ${page === 3 ? 'bg-[#047857] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>3</button>
-              <button className="bg-white p-2 text-gray-400 hover:text-black transition-colors" onClick={() => setPage(p => p + 1)}>
+              <div className="flex bg-white px-4 items-center text-[10px] font-black uppercase tracking-widest">
+                Page {page} of {Math.ceil(totalRecords / 10)}
+              </div>
+              <button 
+                className="bg-white p-2 text-gray-400 hover:text-black transition-colors disabled:opacity-30" 
+                disabled={page >= Math.ceil(totalRecords / 10)} 
+                onClick={() => setPage(p => p + 1)}
+              >
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -198,7 +239,7 @@ const UserInventory = () => {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="bg-[#047857] text-white p-6 flex justify-between items-center">
-              <h3 className="text-xl font-bold tracking-tight">Quick Adjustment</h3>
+              <h3 className="text-xl font-bold tracking-tight uppercase">Inventory Adjustment</h3>
               <button 
                 onClick={() => setShowAdjustment(false)}
                 className="p-1 hover:bg-white/20 transition-colors"
@@ -208,23 +249,25 @@ const UserInventory = () => {
             </div>
             <div className="p-8 space-y-8">
               <div className="space-y-4">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Product Search</label>
-                <div className="relative border-b-2 border-gray-200 pb-2">
-                  <Search size={14} className="absolute left-0 top-1 text-gray-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Scan SKU or type name"
-                    className="w-full pl-6 text-sm font-bold focus:outline-none placeholder:text-gray-300"
-                  />
+                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Target Product</label>
+                <div className="bg-gray-50 p-4 border border-gray-100">
+                   <p className="text-sm font-black text-gray-900">{adjustmentData.productName || 'Select product below'}</p>
+                   <p className="text-[10px] text-gray-400 mt-1 uppercase">ID: {adjustmentData.productID || '---'}</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Adjustment Type</label>
                 <div className="flex gap-px bg-gray-200 border border-gray-200">
-                  <button className="flex-1 py-3 text-[10px] font-black bg-white hover:bg-gray-50 transition-colors uppercase">Add</button>
-                  <button className="flex-1 py-3 text-[10px] font-black bg-white hover:bg-gray-50 transition-colors uppercase">Remove</button>
-                  <button className="flex-1 py-3 text-[10px] font-black bg-white hover:bg-gray-50 transition-colors uppercase">Set</button>
+                  {['ADD', 'REMOVE', 'SET'].map((t) => (
+                    <button 
+                      key={t}
+                      onClick={() => setAdjustmentData({...adjustmentData, type: t})}
+                      className={`flex-1 py-3 text-[10px] font-black transition-colors uppercase ${adjustmentData.type === t ? 'bg-[#047857] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -232,14 +275,19 @@ const UserInventory = () => {
                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Quantity</label>
                 <input 
                   type="number" 
-                  defaultValue="1"
+                  value={adjustmentData.quantity}
+                  onChange={(e) => setAdjustmentData({...adjustmentData, quantity: parseInt(e.target.value)})}
                   className="w-full border-2 border-gray-100 p-4 text-xl font-bold focus:outline-none focus:border-black"
                 />
               </div>
 
               <div className="space-y-4">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400">Reason</label>
-                <select className="w-full border-b-2 border-gray-200 p-2 text-sm font-bold bg-white focus:outline-none focus:border-black">
+                <select 
+                  value={adjustmentData.reason}
+                  onChange={(e) => setAdjustmentData({...adjustmentData, reason: e.target.value})}
+                  className="w-full border-b-2 border-gray-200 p-2 text-sm font-bold bg-white focus:outline-none focus:border-black"
+                >
                   <option>Inventory Count</option>
                   <option>Damage</option>
                   <option>Returned Goods</option>
@@ -254,7 +302,10 @@ const UserInventory = () => {
                 >
                   Cancel
                 </button>
-                <button className="flex-[2] py-4 bg-black text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-zinc-800 transition-all">
+                <button 
+                  onClick={handleAdjustSubmit}
+                  className="flex-[2] py-4 bg-black text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-zinc-800 transition-all"
+                >
                   Confirm Adjustment
                 </button>
               </div>

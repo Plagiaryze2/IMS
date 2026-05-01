@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Search, 
   Filter, 
@@ -10,31 +10,32 @@ import {
   MapPin, 
   FileText,
   Package,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
+import { salesAPI } from '../../services/api';
 
 const UserTracking = () => {
-  const [selectedOrder, setSelectedOrder] = useState({
-    id: 'ORD-8829-1A',
-    customer: 'Acme Corp',
-    carrier: 'DHL Exp',
-    status: 'DISPATCHED',
-    location: 'Transit Hub, FRA',
-    delivery: '24.10.23',
-    timeline: [
-      { status: 'ORDER PROCESSED', time: '21.10.23 08:45 AM', completed: true },
-      { status: 'PICKED & PACKED', time: '21.10.23 14:20 PM', completed: true },
-      { status: 'DISPATCHED', time: 'Transit Hub, Frankfurt\n22.10.23 02:15 AM', current: true },
-      { status: 'OUT FOR DELIVERY', time: 'Pending' },
-      { status: 'DELIVERED', time: 'Est. 24.10.23' },
-    ]
-  });
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const orders = [
-    { id: 'ORD-8829-1A', customer: 'Acme Corp', carrier: 'DHL Exp', status: 'DISPATCHED', location: 'Transit Hub, FRA', delivery: '24.10.23' },
-    { id: 'ORD-7710-9B', customer: 'TechGlobal', carrier: 'FedEx', status: 'OUT FOR DELIVERY', location: 'Local Depot, LHR', delivery: 'Today' },
-    { id: 'ORD-9902-3C', customer: 'Nexus Ind.', carrier: 'UPS', status: 'PROCESSED', location: 'Warehouse A', delivery: '28.10.23' },
-  ];
+  useEffect(() => {
+    const fetchShipments = async () => {
+      try {
+        const data = await salesAPI.getShipments();
+        setOrders(data);
+        if (data.length > 0) setSelectedOrder(data[0]);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchShipments();
+  }, []);
+
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
 
   return (
     <div className="flex h-full bg-[#fafafa]">

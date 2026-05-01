@@ -17,6 +17,9 @@ const Login = () => {
     setLoading(true);
     try {
       const data = await authAPI.login(credentials.username, credentials.password);
+      if (data.user.role !== 'Administrator') {
+        throw new Error('Access Denied: You do not have Administrator privileges. Please use the User Portal.');
+      }
       login(data.user, data.token);
       navigate('/dashboard');
     } catch (err) {

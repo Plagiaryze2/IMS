@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Package, 
   Truck, 
@@ -9,25 +9,58 @@ import {
   FileSearch,
   Activity,
   Terminal,
-  Clock
+  Clock,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { userDashboardAPI } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const UserDashboard = () => {
   const { user } = useAuth();
-  
-  const metrics = [
-    { label: 'Active Shipments', value: '42', detail: '+12%', color: 'text-[#047857]' },
-    { label: 'Pending Invoices', value: '18', detail: '8 URGENT', color: 'text-orange-500' },
-    { label: 'Low Stock Items', value: '05', detail: <AlertTriangle size={16} className="text-red-500" />, color: 'text-red-600' },
-    { label: 'Total Value on Hand', value: '$1.24M', detail: 'USD', color: 'text-gray-400' },
-  ];
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('en-GB', { hour12: false }));
 
-  const recentActivity = [
-    { time: '14:01:22', id: 'INV-9904', desc: 'Payment Processed - Global', op: 'SYS_AUTO', status: 'PAID', statusColor: 'text-[#047857] bg-green-50 border-green-200' },
-    { time: '13:55:01', id: 'SUPP-122', desc: 'New Supplier: Apex Foundry', op: 'OPER_01', status: 'NEW', statusColor: 'text-gray-600 bg-gray-50 border-gray-200' },
-    { time: '13:42:15', id: 'STK-8812', desc: 'Adjustment: +500 Valves', op: 'OPER_03', status: 'SYNC', statusColor: 'text-blue-600 bg-blue-50 border-blue-200' },
-    { time: '13:10:44', id: 'SHP-0019', desc: 'Manifest Verified', op: 'SYS_AUTO', status: 'ACTIVE', statusColor: 'text-[#047857] bg-green-50 border-green-200' },
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    }, 1000);
+
+    const fetchData = async () => {
+      try {
+        const [summary, logs] = await Promise.all([
+          userDashboardAPI.getSummary(),
+          userDashboardAPI.getActivity()
+        ]);
+        setStats(summary);
+        setActivities(logs);
+      } catch (e) {
+        console.error('Dashboard data fetch failed:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => clearInterval(timer);
+  }, []);
+  
+  if (loading) {
+    return (
+      <div className="h-full w-full flex items-center justify-center">
+        <Loader2 className="animate-spin text-[#047857]" size={48} />
+      </div>
+    );
+  }
+
+  const metrics = [
+    { label: 'Live Inventory', value: stats?.totalStock || '0', detail: 'Items in Stock', color: 'text-gray-400' },
+    { label: 'Active Orders', value: stats?.activeOrders || '0', detail: 'Pending Fulfillment', color: 'text-[#047857]' },
+    { label: 'Low Stock Alerts', value: stats?.lowStockItems || '0', detail: 'Critical Threshold', color: 'text-red-600' },
+    { label: 'Daily Revenue', value: stats?.revenueYTD ? `$${(stats.revenueYTD / 1000).toFixed(1)}k` : '$0', detail: '24h Throughput', color: 'text-gray-400' },
   ];
 
   return (
@@ -41,7 +74,7 @@ const UserDashboard = () => {
           <div className="flex items-center gap-2 mt-2">
             <Activity size={16} className="text-[#047857]" />
             <p className="text-sm font-bold text-gray-500">
-              System healthy. <span className="text-red-600">5 critical stock alerts pending.</span>
+              System healthy. <span className="text-red-600">{stats?.lowStockItems || 0} critical stock alerts pending.</span>
             </p>
           </div>
         </div>
@@ -52,7 +85,7 @@ const UserDashboard = () => {
           </div>
           <div className="bg-[#047857] text-white px-4 py-2 flex items-center gap-2">
             <Clock size={12} />
-            <span className="text-[10px] font-mono font-bold tracking-widest">14:02:44</span>
+            <span className="text-[10px] font-mono font-bold tracking-widest">{currentTime}</span>
           </div>
         </div>
       </div>
@@ -91,14 +124,18 @@ const UserDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentActivity.map((row, i) => (
+                {activities.map((row, i) => (
                   <tr key={i} className="hover:bg-gray-50 transition-colors group">
                     <td className="px-6 py-6 text-xs font-mono text-gray-400">{row.time}</td>
                     <td className="px-6 py-6 text-xs font-black tracking-tighter">{row.id}</td>
                     <td className="px-6 py-6 text-xs font-bold text-gray-700">{row.desc}</td>
                     <td className="px-6 py-6 text-xs font-mono text-gray-500">{row.op}</td>
                     <td className="px-6 py-6 text-right">
-                      <span className={`px-2 py-1 text-[9px] font-black border rounded-sm tracking-tighter ${row.statusColor}`}>
+                      <span className={`px-2 py-1 text-[9px] font-black border rounded-sm tracking-tighter ${
+                        row.status === 'ERR' ? 'text-red-600 bg-red-50 border-red-200' :
+                        row.status === 'WARN' ? 'text-orange-600 bg-orange-50 border-orange-200' :
+                        'text-[#047857] bg-green-50 border-green-200'
+                      }`}>
                         {row.status}
                       </span>
                     </td>
@@ -112,18 +149,19 @@ const UserDashboard = () => {
         {/* Right Sidebar - Tasks and Terminal */}
         <div className="space-y-8">
           {/* Operational Tasks */}
-          <div className="bg-white border border-gray-200 p-8">
+          <div className="bg-white border border-gray-200 p-8 shadow-sm">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 mb-8 pb-4 border-b border-gray-100">
               Operational Tasks
             </h3>
             <div className="space-y-4">
               {[
-                { name: 'Create New Invoice', icon: <PlusCircle size={16} /> },
-                { name: 'Adjust Stock Levels', icon: <Edit3 size={16} /> },
-                { name: 'Generate Report', icon: <FileSearch size={16} /> },
+                { name: 'Create New Invoice', icon: <PlusCircle size={16} />, path: '/user/sales/create' },
+                { name: 'Adjust Stock Levels', icon: <Edit3 size={16} />, path: '/user/inventory' },
+                { name: 'Generate Report', icon: <FileSearch size={16} />, path: '/user/reports' },
               ].map((task, i) => (
                 <button 
                   key={i}
+                  onClick={() => navigate(task.path)}
                   className="w-full flex items-center justify-between p-4 border border-gray-200 text-xs font-bold uppercase tracking-widest hover:border-black hover:bg-gray-50 transition-all group"
                 >
                   {task.name}
@@ -134,38 +172,58 @@ const UserDashboard = () => {
           </div>
 
           {/* Status Terminal */}
-          <div className="bg-zinc-900 text-green-400 p-8 font-mono shadow-2xl rounded-sm">
-            <div className="flex justify-between items-center mb-10 pb-4 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-bold tracking-widest uppercase">Status_Terminal_v1</span>
-              </div>
-              <span className="text-[10px] opacity-40">0x0B23F</span>
-            </div>
-            <div className="space-y-4 text-[10px]">
-              <div className="flex justify-between border-b border-zinc-800/50 pb-2">
-                <span className="opacity-50 uppercase tracking-widest">Server_Uptime:</span>
-                <span>182d 04h 22m</span>
-              </div>
-              <div className="flex justify-between border-b border-zinc-800/50 pb-2">
-                <span className="opacity-50 uppercase tracking-widest">API_Latency:</span>
-                <span>14.2ms</span>
-              </div>
-              <div className="flex justify-between border-b border-zinc-800/50 pb-2">
-                <span className="opacity-50 uppercase tracking-widest">DB_Cluster:</span>
-                <span className="text-green-300 font-bold">HEALTHY [99.8%]</span>
-              </div>
-              <div className="flex justify-between border-b border-zinc-800/50 pb-2">
-                <span className="opacity-50 uppercase tracking-widest">MEM_Reserve:</span>
-                <span>6.42 TB FREE</span>
-              </div>
-              <div className="flex justify-between pt-2">
-                <span className="opacity-50 uppercase tracking-widest">Node_Auth:</span>
-                <span className="text-zinc-500 italic">ENCRYPTED</span>
-              </div>
-            </div>
-          </div>
+          <TerminalLogs />
         </div>
+      </div>
+    </div>
+  );
+};
+
+const TerminalLogs = () => {
+  const [logs, setLogs] = useState([
+    'initializing system_diagnostics...',
+    'memory_check: OPTIMAL',
+    'connection_to_sql_core: ESTABLISHED'
+  ]);
+
+  useEffect(() => {
+    const messages = [
+      'Data packet verified for NYC_NORTH_01',
+      'Inventory re-indexing complete',
+      'Backup heartbeat detected: [OK]',
+      'Security audit: 0 vulnerabilities found',
+      'Cloud sync: 124 objects updated',
+      'System latency: 4ms (Excellent)',
+      'Worker Node_08 joined the cluster',
+      'API throughput: 1.2k req/min'
+    ];
+
+    const interval = setInterval(() => {
+      setLogs(prev => {
+        const next = [...prev, messages[Math.floor(Math.random() * messages.length)]];
+        return next.length > 8 ? next.slice(1) : next;
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-zinc-900 text-green-400 p-8 font-mono shadow-2xl rounded-sm">
+      <div className="flex justify-between items-center mb-8 pb-4 border-b border-zinc-800">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Terminal_Session_01</span>
+        </div>
+        <span className="text-[8px] text-zinc-600 font-bold">TTY/NODE_CORE_8</span>
+      </div>
+      <div className="space-y-3 text-[11px] leading-relaxed">
+        {logs.map((log, i) => (
+          <p key={i} className="animate-in fade-in slide-in-from-left-2 duration-500">
+            <span className="text-zinc-500 mr-3">[$]</span> {log}
+          </p>
+        ))}
+        <p className="text-zinc-500 animate-pulse mt-4">_ awaiting_input_command...</p>
       </div>
     </div>
   );
