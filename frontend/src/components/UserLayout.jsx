@@ -18,8 +18,8 @@ import {
   CheckCircle,
   X
 } from 'lucide-react';
+import { alertsAPI, searchAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { alertsAPI } from '../services/api';
 
 const UserLayout = () => {
   const { user, logout } = useAuth();
@@ -28,13 +28,53 @@ const UserLayout = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchRef = useRef(null);
+
+  // Debounced Search Effect
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchAPI.query(searchQuery);
+        setSearchResults(results);
+        setShowSearchResults(true);
+      } catch (err) {
+        console.error('Search failed', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
         const data = await alertsAPI.getAll();
-        // Filter only STOCK notifications
-        const stockAlerts = data.filter(a => a.Category === 'STOCK');
-        setAlerts(stockAlerts);
+        // The backend now filters to STOCK only for non-admins, so no need to filter here
+        setAlerts(data);
       } catch (e) {
         console.error('Failed to fetch alerts:', e);
       }
@@ -84,13 +124,55 @@ const UserLayout = () => {
             <div className="h-4 w-[2px] bg-gray-200"></div>
             <span className="text-[10px] font-black uppercase tracking-widest text-[#047857] animate-pulse">Live_Ops</span>
           </div>
-          <div className="relative hidden md:block">
+          <div className="relative hidden md:block" ref={searchRef}>
             <input 
               type="text" 
               placeholder="Global System Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => { if (searchResults.length > 0) setShowSearchResults(true); }}
               className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 text-xs font-bold focus:outline-none focus:border-[#047857] w-80 transition-all"
             />
-            <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+            {isSearching ? (
+              <div className="absolute left-3 top-2.5 w-3.5 h-3.5 border-2 border-[#047857] border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Search size={14} className="absolute left-3 top-2.5 text-gray-400" />
+            )}
+
+            {/* Search Dropdown */}
+            {showSearchResults && (
+              <div className="absolute top-full left-0 mt-2 w-full bg-white border border-gray-200 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200 origin-top">
+                <div className="max-h-80 overflow-y-auto">
+                  {searchResults.length === 0 ? (
+                    <div className="p-4 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      No matching records
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {searchResults.map((item, idx) => (
+                        <div 
+                          key={idx} 
+                          onClick={() => {
+                            setShowSearchResults(false);
+                            setSearchQuery('');
+                            navigate(item.path);
+                          }}
+                          className="p-3 hover:bg-gray-50 cursor-pointer flex justify-between items-center group"
+                        >
+                          <div>
+                            <p className="text-xs font-bold text-gray-900 group-hover:text-[#047857] transition-colors">{item.title}</p>
+                            <p className="text-[10px] font-mono text-gray-500 mt-0.5">{item.SKU}</p>
+                          </div>
+                          <span className="text-[8px] font-black tracking-widest uppercase bg-gray-100 px-2 py-1 text-gray-500 rounded-sm">
+                            {item.type}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -145,7 +227,15 @@ const UserLayout = () => {
                   )}
                 </div>
                 <div className="p-4 border-t border-gray-100 text-center">
-                  <button className="text-[10px] font-black text-[#047857] uppercase tracking-widest hover:underline">View All Alerts</button>
+                  <button 
+                    onClick={() => {
+                      setShowNotifications(false);
+                      navigate('/user/alerts');
+                    }}
+                    className="text-[10px] font-black text-[#047857] uppercase tracking-widest hover:underline"
+                  >
+                    View All Alerts
+                  </button>
                 </div>
               </div>
             )}

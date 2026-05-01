@@ -22,6 +22,7 @@ import CreateInvoice from './pages/user/CreateInvoice';
 import UserWarehouse from './pages/user/UserWarehouse';
 import UserReports from './pages/user/UserReports';
 import UserTracking from './pages/user/UserTracking';
+import UserAlerts from './pages/user/UserAlerts';
 
 const AdminProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -114,6 +115,7 @@ const AppRoutes = () => {
           <Route path="/user/warehouse" element={<UserWarehouse />} />
           <Route path="/user/reports" element={<UserReports />} />
           <Route path="/user/tracking" element={<UserTracking />} />
+          <Route path="/user/alerts" element={<UserAlerts />} />
           <Route path="/user" element={<Navigate to="/user/dashboard" replace />} />
         </Route>
         
