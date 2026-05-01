@@ -368,11 +368,53 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
 
         await transaction.commit();
         await addLog('SYNC', `New Invoice #${invoiceID} posted for Customer #${customerID}.`, req.user.userID);
-        res.status(201).json({ success: true, invoiceID });
+        res.json({ success: true, invoiceID });
     } catch (e) {
         await transaction.rollback();
         res.status(500).json({ error: e.message });
     }
+});
+
+// GET /api/sales/invoice/:id
+app.get('/api/sales/invoice/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const db = await getPool();
+        const invoice = await db.request().input('id', sql.Int, id).query(`
+            SELECT i.*, c.CustomerName, c.Email, c.Phone, c.Address, so.OrderDate
+            FROM Invoices i
+            JOIN Customers c ON i.CustomerID = c.CustomerID
+            JOIN SalesOrders so ON i.SalesOrderID = so.SalesOrderID
+            WHERE i.InvoiceID = @id
+        `);
+        
+        if (invoice.recordset.length === 0) return res.status(404).json({ error: 'Invoice not found' });
+
+        const items = await db.request().input('id', sql.Int, id).query(`
+            SELECT ii.*, p.ProductName, p.SKU
+            FROM InvoiceItems ii
+            JOIN Products p ON ii.ProductID = p.ProductID
+            WHERE ii.InvoiceID = @id
+        `);
+
+        res.json({ ...invoice.recordset[0], items: items.recordset });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/sales/invoice/:id/status
+app.patch('/api/sales/invoice/:id/status', auth, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    try {
+        const db = await getPool();
+        await db.request()
+            .input('id', sql.Int, id)
+            .input('status', sql.NVarChar, status)
+            .query('UPDATE Invoices SET InvoiceStatus = @status WHERE InvoiceID = @id');
+        
+        await addLog('SALES', `Invoice #${id} status updated to ${status}`, req.user.userID);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -680,26 +722,67 @@ app.get('/api/user/dashboard/activity', auth, async (req, res) => {
 app.get('/api/user/reports/stats', auth, async (req, res) => {
     try {
         const db = await getPool();
-        const result = await db.request().query(`
+        
+        // 1. Core KPIs
+        const kpis = await db.request().query(`
             SELECT
-                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceStatus = 'Paid') AS totalRevenue,
-                (SELECT SUM(TotalAmount) FROM Invoices WHERE InvoiceStatus = 'Unpaid') AS pendingRevenue,
-                (SELECT COUNT(*) FROM SalesOrders WHERE Status = 'Pending') AS activeOrders,
-                (SELECT SUM(p.UnitPrice * i.QuantityOnHand) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS inventoryValue
+                (SELECT ISNULL(SUM(TotalAmount), 0) FROM Invoices WHERE InvoiceStatus IN ('Paid', 'Partially Paid')) AS totalRevenue,
+                (SELECT ISNULL(SUM(TotalAmount), 0) FROM Invoices WHERE InvoiceStatus IN ('Unpaid', 'Partially Paid', 'Draft')) AS pendingRevenue,
+                (SELECT COUNT(*) FROM SalesOrders WHERE Status IN ('Pending', 'Processing')) AS activeOrders,
+                (SELECT ISNULL(SUM(p.UnitPrice * i.QuantityOnHand), 0) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS inventoryValue
         `);
         
+        // 2. Top Products
         const topProducts = await db.request().query(`
             SELECT TOP 5 p.ProductName, SUM(ii.Quantity) as units, 
-            CAST(SUM(ii.Quantity) * 100.0 / (SELECT SUM(Quantity) FROM InvoiceItems) AS INT) as percent
+            CAST(SUM(ii.Quantity) * 100.0 / (SELECT ISNULL(SUM(Quantity), 1) FROM InvoiceItems) AS INT) as percentage
             FROM InvoiceItems ii
             JOIN Products p ON ii.ProductID = p.ProductID
             GROUP BY p.ProductName
             ORDER BY units DESC
         `);
 
+        // 3. Sales Trend (Last 15 Days)
+        const salesTrend = await db.request().query(`
+            SELECT CAST(InvoiceDate AS DATE) as day, SUM(TotalAmount) as value
+            FROM Invoices
+            WHERE InvoiceDate >= DATEADD(day, -15, GETDATE())
+            GROUP BY CAST(InvoiceDate AS DATE)
+            ORDER BY day
+        `);
+        const formattedTrend = salesTrend.recordset.map(r => ({
+            name: new Date(r.day).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' }),
+            value: r.value
+        }));
+
+        // 4. Category Distribution
+        const categoryData = await db.request().query(`
+            SELECT TOP 4 ISNULL(c.CategoryName, 'Uncategorized') as name, SUM(i.QuantityOnHand) as value
+            FROM Inventory i
+            JOIN Products p ON i.ProductID = p.ProductID
+            LEFT JOIN Categories c ON p.CategoryID = c.CategoryID
+            GROUP BY c.CategoryName
+            ORDER BY value DESC
+        `);
+
+        // 5. Low Velocity Items (High stock, low sales)
+        const lowVelocity = await db.request().query(`
+            SELECT TOP 5 p.SKU, p.ProductName as name, c.CategoryName as cat, i.QuantityOnHand as qty, 
+                   (p.UnitPrice * i.QuantityOnHand) as value
+            FROM Inventory i
+            JOIN Products p ON i.ProductID = p.ProductID
+            JOIN Categories c ON p.CategoryID = c.CategoryID
+            LEFT JOIN InvoiceItems ii ON p.ProductID = ii.ProductID
+            GROUP BY p.SKU, p.ProductName, c.CategoryName, i.QuantityOnHand, p.UnitPrice
+            ORDER BY SUM(ISNULL(ii.Quantity, 0)) ASC, i.QuantityOnHand DESC
+        `);
+
         res.json({
-            kpis: result.recordset[0],
-            topProducts: topProducts.recordset
+            kpis: kpis.recordset[0],
+            topProducts: topProducts.recordset,
+            salesTrend: formattedTrend,
+            categoryData: categoryData.recordset,
+            lowVelocity: lowVelocity.recordset
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

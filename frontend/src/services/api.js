@@ -71,8 +71,10 @@ export const inventoryAPI = {
 // ─── Sales ────────────────────────────────────────────────────────────────
 export const salesAPI = {
   getCustomers: () => request('/customers'),
-  getInvoices: (params) => request(`/sales/invoices?${new URLSearchParams(params)}`),
+  getInvoices: (params) => request(`/sales/invoices?search=${params?.search || ''}&status=${params?.status || 'ALL'}`),
+  getInvoice: (id) => request(`/sales/invoice/${id}`),
   createInvoice: (data) => request('/sales/invoice', { method: 'POST', body: data }),
+  updateStatus: (id, status) => request(`/sales/invoice/${id}/status`, { method: 'PATCH', body: { status } }),
   getShipments: () => request('/shipments'),
 };
 
