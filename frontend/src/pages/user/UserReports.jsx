@@ -28,6 +28,8 @@ import {
 
 import { reportsAPI } from '../../services/api';
 import Swal from 'sweetalert2';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const UserReports = () => {
   const [stats, setStats] = useState(null);
@@ -50,18 +52,102 @@ const UserReports = () => {
   };
 
   const handleExport = (type) => {
-    Swal.fire({
-      title: `Exporting ${type}...`,
-      html: 'Preparing your data for download.',
-      timer: 2000,
-      didOpen: () => {
-        Swal.showLoading();
-      },
-      willClose: () => {
-        // Logic for real export would go here
-        Swal.fire('Export Complete', `Your ${type} report is ready.`, 'success');
+    if (type === 'PDF') {
+      try {
+        const doc = new jsPDF();
+        const timestamp = new Date().toLocaleString();
+
+        // Header
+        doc.setFontSize(20);
+        doc.text('ANALYTICS & PERFORMANCE REPORT', 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Generated on: ${timestamp}`, 14, 30);
+        doc.text('CodeRed Inventory Management System', 14, 35);
+
+        // KPIs
+        doc.setFontSize(14);
+        doc.text('Key Performance Indicators', 14, 45);
+        
+        const kpiData = [
+          ['Metric', 'Value'],
+          ['Total Revenue', `$${parseFloat(stats?.kpis?.totalRevenue ?? 0).toLocaleString()}`],
+          ['Pending Revenue', `$${parseFloat(stats?.kpis?.pendingRevenue ?? 0).toLocaleString()}`],
+          ['Active Orders', stats?.kpis?.activeOrders ?? '0'],
+          ['Inventory Valuation', `$${(parseFloat(stats?.kpis?.inventoryValue ?? 0) / 1000).toFixed(2)}K`]
+        ];
+
+        autoTable(doc, {
+          startY: 50,
+          head: [kpiData[0]],
+          body: kpiData.slice(1),
+          theme: 'striped',
+          headStyles: { fillColor: [4, 120, 87] }
+        });
+
+        // Best Selling Products
+        doc.setFontSize(14);
+        doc.text('Best Selling SKUs', 14, doc.lastAutoTable.finalY + 15);
+        
+        const topProductData = (stats?.topProducts || []).map(p => [
+          p.ProductName,
+          `${p.units} Units`,
+          `${p.percentage}%`
+        ]);
+
+        autoTable(doc, {
+          startY: doc.lastAutoTable.finalY + 20,
+          head: [['Product Name', 'Units Sold', 'Market Share']],
+          body: topProductData,
+          theme: 'grid',
+          headStyles: { fillColor: [4, 120, 87] }
+        });
+
+        // Low Velocity Stock
+        doc.setFontSize(14);
+        doc.text('Low Velocity Stock Items', 14, doc.lastAutoTable.finalY + 15);
+        
+        const lowVelocityData = (stats?.lowVelocity || []).map(item => [
+          item.name,
+          item.SKU,
+          item.qty,
+          `$${parseFloat(item.value).toLocaleString()}`
+        ]);
+
+        autoTable(doc, {
+          startY: doc.lastAutoTable.finalY + 20,
+          head: [['Product', 'SKU', 'Available', 'Hold Value']],
+          body: lowVelocityData,
+          theme: 'striped',
+          headStyles: { fillColor: [180, 83, 9] } // Amber color for warning
+        });
+
+        // Manual download to force filename and extension
+        const pdfBlob = doc.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `IMS_Report_${new Date().getTime()}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        Swal.fire('Success', 'PDF Report downloaded successfully', 'success');
+      } catch (error) {
+        console.error('PDF Generation failed:', error);
+        Swal.fire('Error', 'Failed to generate PDF report', 'error');
       }
-    });
+    } else {
+      Swal.fire({
+        title: `Exporting ${type}...`,
+        html: 'Preparing your data for download.',
+        timer: 1500,
+        didOpen: () => Swal.showLoading(),
+        willClose: () => {
+          Swal.fire('Export Complete', `Your ${type} report is ready. (Logic pending for Excel)`, 'info');
+        }
+      });
+    }
   };
 
   const salesData = stats?.salesTrend?.length > 0 ? stats.salesTrend : [
