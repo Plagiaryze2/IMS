@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { authAPI } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
@@ -18,7 +18,7 @@ const Login = () => {
     try {
       const data = await authAPI.login(credentials.username, credentials.password);
       login(data.user, data.token);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Authentication failed. Check your credentials.');
     } finally {
@@ -81,6 +81,12 @@ const Login = () => {
         <p className="text-[10px] text-gray-400 text-center mt-6 font-mono">
           Default: admin / 12345678
         </p>
+
+        <div className="text-center mt-8 pt-6 border-t border-gray-100">
+          <p className="text-xs text-gray-500">
+            Don't have an account? <Link to="/register" className="text-[#047857] font-bold hover:underline">Create Account</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
