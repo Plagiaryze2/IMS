@@ -73,13 +73,14 @@ export const inventoryAPI = {
 // ─── Sales ────────────────────────────────────────────────────────────────
 export const salesAPI = {
   getCustomers: () => request('/customers'),
+  createCustomer: (data) => request('/customers', { method: 'POST', body: data }),
   getInvoices: (params) => request(`/sales/invoices?search=${params?.search || ''}&status=${params?.status || 'ALL'}`),
   getInvoice: (id) => request(`/sales/invoice/${id}`),
   createInvoice: (data) => request('/sales/invoice', { method: 'POST', body: data }),
   updateStatus: (id, status) => request(`/sales/invoice/${id}/status`, { method: 'PATCH', body: { status } }),
   getShipments: (params) => request(`/shipments?search=${params?.search || ''}&status=${params?.status || 'ALL'}`),
   updateTracking: (id, data) => request(`/shipments/${id}/tracking`, { method: 'POST', body: data }),
-  shipInvoice: (id) => request(`/sales/invoice/${id}/ship`, { method: 'POST' }),
+  shipInvoice: (id, data) => request(`/sales/invoice/${id}/ship`, { method: 'POST', body: data }),
 };
 
 // ─── Procurement ──────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export const procurementAPI = {
 // ─── Warehouse ────────────────────────────────────────────────────────────
 export const warehouseAPI = {
   getWarehouses: () => request('/warehouses'),
+  createWarehouse: (data) => request('/warehouses', { method: 'POST', body: data }),
   getInventory: (params) => request(`/warehouse/inventory?warehouseId=${params?.warehouseId || ''}&aisle=${params?.aisle || ''}`),
   getLocations: (warehouseId) => request(`/warehouse/locations?warehouseId=${warehouseId || ''}`),
   transfer: (data) => request('/warehouse/transfer', { method: 'POST', body: data }),

@@ -85,6 +85,76 @@ const CreateInvoice = () => {
     ));
   };
 
+  const handleCreateCustomer = async () => {
+    const { value: formValues } = await Swal.fire({
+      title: '<h2 class="text-2xl font-black uppercase italic tracking-tighter">New Customer</h2>',
+      html: `
+        <div class="space-y-4 text-left p-2 font-sans">
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Customer Name *</label>
+            <input id="swal-cust-name" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="e.g. Acme Corp">
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Email</label>
+            <input id="swal-cust-email" type="email" class="w-full border-2 border-gray-200 p-3 text-sm font-bold focus:border-black transition-all outline-none" placeholder="billing@acme.com">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Phone</label>
+              <input id="swal-cust-phone" class="w-full border-2 border-gray-200 p-3 text-sm font-bold focus:border-black transition-all outline-none" placeholder="555-0199">
+            </div>
+            <div>
+              <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Type</label>
+              <select id="swal-cust-type" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none">
+                <option value="Regular">Regular</option>
+                <option value="Wholesale">Wholesale</option>
+                <option value="VIP">VIP</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Address</label>
+            <input id="swal-cust-addr" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="123 Business Rd">
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'CREATE',
+      cancelButtonText: 'CANCEL',
+      customClass: {
+        confirmButton: 'bg-black text-white px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-800',
+        cancelButton: 'bg-gray-200 text-black px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-300'
+      },
+      preConfirm: () => {
+        const name = document.getElementById('swal-cust-name').value;
+        const email = document.getElementById('swal-cust-email').value;
+        const phone = document.getElementById('swal-cust-phone').value;
+        const type = document.getElementById('swal-cust-type').value;
+        const addr = document.getElementById('swal-cust-addr').value;
+
+        if (!name) {
+          Swal.showValidationMessage('Customer Name is required');
+          return false;
+        }
+        return { name, email, phone, type, address: addr };
+      }
+    });
+
+    if (formValues) {
+      try {
+        Swal.fire({ title: 'Creating...', didOpen: () => Swal.showLoading() });
+        const newCust = await salesAPI.createCustomer(formValues);
+        const custs = await salesAPI.getCustomers();
+        setCustomers(custs);
+        setSelectedCustomerID(newCust.CustomerID);
+        Swal.fire('Success', 'New customer created successfully.', 'success');
+      } catch (e) {
+        Swal.fire('Error', e.message, 'error');
+      }
+    }
+  };
+
   const handlePostSale = async () => {
     if (!selectedCustomerID || lineItems.length === 0) {
       Swal.fire('Error', 'Please select a customer and add at least one item.', 'error');
@@ -137,7 +207,15 @@ const CreateInvoice = () => {
 
         <div className="space-y-6 bg-white border border-gray-200 p-8">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Customer Selection</label>
+            <div className="flex justify-between items-center">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Customer Selection</label>
+              <button 
+                onClick={handleCreateCustomer}
+                className="text-[10px] font-black text-[#047857] uppercase tracking-widest flex items-center gap-1 hover:underline"
+              >
+                <Plus size={12} /> New Customer
+              </button>
+            </div>
             <div className="relative">
               <select 
                 value={selectedCustomerID}

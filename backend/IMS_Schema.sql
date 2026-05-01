@@ -531,7 +531,7 @@ ALTER TABLE [PurchaseOrderDetails] ADD CONSTRAINT [CK_PurchaseOrderDetails_UnitC
 GO
 ALTER TABLE [PurchaseOrderDetails] ADD CONSTRAINT [CK_PurchaseOrderDetails_LineTotal] CHECK ([LineTotal]>=(0));
 GO
-ALTER TABLE [Customers] ADD CONSTRAINT [CK_Customers_CustomerType] CHECK ([CustomerType]='WalkIn' OR [CustomerType]='Corporate' OR [CustomerType]='Regular');
+ALTER TABLE [Customers] ADD CONSTRAINT [CK_Customers_CustomerType] CHECK ([CustomerType]='WalkIn' OR [CustomerType]='Corporate' OR [CustomerType]='Regular' OR [CustomerType]='Wholesale' OR [CustomerType]='VIP');
 GO
 ALTER TABLE [SalesOrders] ADD CONSTRAINT [CK_SalesOrders_Status] CHECK ([Status]='Cancelled' OR [Status]='Completed' OR [Status]='Dispatched' OR [Status]='Packed' OR [Status]='Confirmed' OR [Status]='Pending');
 GO
