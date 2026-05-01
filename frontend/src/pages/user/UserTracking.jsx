@@ -4,7 +4,7 @@ import {
   Filter, 
   ChevronLeft, 
   ChevronRight, 
-  CheckCircle2, 
+  Check, 
   Clock, 
   Truck, 
   MapPin, 
@@ -14,26 +14,110 @@ import {
   Loader2
 } from 'lucide-react';
 import { salesAPI } from '../../services/api';
+import Swal from 'sweetalert2';
 
 const UserTracking = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+
+  const fetchShipments = async () => {
+    try {
+      const data = await salesAPI.getShipments({ search, status: statusFilter });
+      setOrders(data);
+      if (data.length > 0) {
+        setSelectedOrder(prev => prev ? data.find(o => o.id === prev.id) || data[0] : data[0]);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchShipments = async () => {
-      try {
-        const data = await salesAPI.getShipments();
-        setOrders(data);
-        if (data.length > 0) setSelectedOrder(data[0]);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+    const timer = setTimeout(() => {
+      fetchShipments();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter]);
+
+  const handleUpdateTracking = async () => {
+    if (!selectedOrder) return;
+
+    const { value: formValues } = await Swal.fire({
+      title: '<h2 class="text-2xl font-black uppercase italic tracking-tighter">Update Tracking</h2>',
+      html: `
+        <div class="space-y-4 text-left mt-4">
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">New Status</label>
+            <select id="swal-status" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none">
+              <option value="Scheduled">Scheduled</option>
+              <option value="Packed">Packed</option>
+              <option value="Shipped">Shipped</option>
+              <option value="In Transit">In Transit</option>
+              <option value="Delivered">Delivered</option>
+              <option value="Returned">Returned</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Current Address / Location</label>
+            <input id="swal-location" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="e.g. Transit Hub, Frankfurt or Final Destination">
+          </div>
+          <div>
+            <label class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Notes (Optional)</label>
+            <input id="swal-notes" class="w-full border-2 border-gray-200 p-3 text-sm font-bold uppercase focus:border-black transition-all outline-none" placeholder="e.g. Delayed due to weather">
+          </div>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'UPDATE',
+      cancelButtonText: 'CANCEL',
+      customClass: {
+        confirmButton: 'bg-black text-white px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-800',
+        cancelButton: 'bg-gray-200 text-black px-6 py-3 font-black text-[10px] tracking-widest uppercase rounded-none hover:bg-gray-300'
+      },
+      preConfirm: () => {
+        const status = document.getElementById('swal-status').value;
+        const location = document.getElementById('swal-location').value;
+        const notes = document.getElementById('swal-notes').value;
+        return { status, location, notes };
       }
-    };
-    fetchShipments();
-  }, []);
+    });
+
+    if (formValues) {
+      try {
+        Swal.showLoading();
+        await salesAPI.updateTracking(selectedOrder.id, formValues);
+        await fetchShipments();
+        Swal.fire({
+          icon: 'success',
+          title: 'UPDATED',
+          text: 'Tracking information has been logged.',
+          confirmButtonColor: '#000',
+          customClass: { confirmButton: 'rounded-none font-black text-[10px] tracking-widest uppercase px-6 py-3' }
+        });
+      } catch (error) {
+        Swal.fire({
+          icon: 'error',
+          title: 'ERROR',
+          text: error.message || 'Failed to update tracking',
+          confirmButtonColor: '#000',
+          customClass: { confirmButton: 'rounded-none font-black text-[10px] tracking-widest uppercase px-6 py-3' }
+        });
+      }
+    }
+  };
+
+  const handleViewManifest = () => {
+    if (!selectedOrder) return;
+    setShowCheckpoints(true);
+  };
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#047857]" size={48} /></div>;
 
@@ -46,8 +130,10 @@ const UserTracking = () => {
            <Search size={16} className="absolute left-4 top-4 text-gray-400" />
            <input 
              type="text" 
+             value={search}
+             onChange={(e) => setSearch(e.target.value)}
              placeholder="SEARCH ORDER / TRACKING ID"
-             className="w-full pl-12 pr-4 py-4 bg-white border border-gray-200 text-sm font-bold focus:outline-none focus:border-black tracking-widest"
+             className="w-full pl-12 pr-4 py-4 bg-white border border-gray-200 text-sm font-bold focus:outline-none focus:border-black tracking-widest uppercase"
            />
         </div>
 
@@ -55,9 +141,25 @@ const UserTracking = () => {
         <div className="bg-white border border-gray-200 shadow-sm">
           <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
              <h2 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Active Shipments</h2>
-             <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all">
-               <Filter size={14} /> Filter
-             </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Filter size={14} className="text-gray-400" />
+                  <select 
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-transparent text-[10px] font-black uppercase tracking-widest border-none focus:ring-0 cursor-pointer"
+                  >
+                    <option value="ALL">ALL STATUS</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Packed">Packed</option>
+                    <option value="Shipped">Shipped</option>
+                    <option value="In Transit">In Transit</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Returned">Returned</option>
+                    <option value="Failed">Failed</option>
+                  </select>
+                </div>
+              </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -93,7 +195,7 @@ const UserTracking = () => {
             </table>
           </div>
           <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
-             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Showing 1-3 of 142</p>
+             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Showing {orders.length} Shipments</p>
              <div className="flex gap-2">
                <button className="px-4 py-2 bg-white border border-gray-200 text-[10px] font-black uppercase hover:bg-gray-100"><ChevronLeft size={14} /></button>
                <button className="px-4 py-2 bg-white border border-gray-200 text-[10px] font-black uppercase hover:bg-gray-100"><ChevronRight size={14} /></button>
@@ -115,56 +217,117 @@ const UserTracking = () => {
 
           <div className="flex-1 overflow-y-auto p-8 space-y-12">
             {/* Stepper */}
-            <div className="space-y-8 relative">
+            <div className="space-y-0 relative pl-4 mt-8">
               {/* Vertical Line */}
-              <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-100"></div>
+              <div className="absolute left-[29px] top-4 bottom-8 w-0.5 bg-gray-300"></div>
               
-              {(selectedOrder.timeline || [
-                { status: 'ORDER PROCESSED', time: '21.10.23 08:45 AM', completed: true },
-                { status: 'PICKED & PACKED', time: '21.10.23 14:20 PM', completed: true },
-                { status: 'DISPATCHED', time: 'Transit Hub, Frankfurt\n22.10.23 02:15 AM', current: true },
-                { status: 'OUT FOR DELIVERY', time: 'Pending' },
-                { status: 'DELIVERED', time: 'Est. 24.10.23' },
-              ]).map((step, idx) => (
-                <div key={idx} className="relative pl-10 flex gap-4">
-                  <div className={`absolute left-0 w-6 h-6 border-2 flex items-center justify-center transition-colors z-10 ${
+              {(selectedOrder.timeline || []).map((step, idx) => (
+                <div key={idx} className="relative flex gap-6 pb-8">
+                  <div className={`relative w-7 h-7 border-2 flex flex-shrink-0 items-center justify-center transition-colors z-10 bg-white ${
                     step.completed ? 'bg-[#047857] border-[#047857] text-white' : 
-                    step.current ? 'bg-white border-[#047857] text-[#047857]' : 
-                    'bg-white border-gray-200 text-gray-200'
+                    step.current ? 'border-[#047857] text-[#047857]' : 
+                    'border-gray-300 text-gray-200'
                   }`}>
-                    {step.completed ? <CheckCircle2 size={12} /> : <div className={`w-2 h-2 ${step.current ? 'bg-[#047857]' : 'bg-gray-200'}`}></div>}
+                    {step.completed ? <Check size={16} strokeWidth={3} /> : <div className={`w-2.5 h-2.5 ${step.current ? 'bg-[#047857]' : 'bg-transparent'}`}></div>}
                   </div>
-                  <div>
+                  <div className="pt-0.5">
                     <p className={`text-[11px] font-black tracking-widest uppercase ${
                       step.completed || step.current ? 'text-gray-900' : 'text-gray-300'
                     }`}>{step.status}</p>
-                    <p className="text-[10px] font-bold text-gray-400 mt-1 whitespace-pre-line leading-relaxed">{step.time}</p>
+                    <p className="text-[10px] font-bold text-gray-400 mt-1 whitespace-pre-line leading-relaxed">
+                      {step.location ? `${step.location}\n` : ''}{step.time}
+                    </p>
                   </div>
                 </div>
               ))}
+              {(!selectedOrder.timeline || selectedOrder.timeline.length === 0) && (
+                <p className="text-[10px] font-bold text-gray-400 uppercase">No tracking history available.</p>
+              )}
             </div>
 
-            {/* Satellite Mockup */}
-            <div className="relative border border-gray-200">
-               <img 
-                 src="https://images.unsplash.com/photo-1544383835-bda2bc66a55d?q=80&w=2021&auto=format&fit=crop" 
-                 alt="Satellite View" 
-                 className="w-full h-48 object-cover grayscale brightness-50"
-               />
-               <div className="absolute inset-0 bg-black/10"></div>
-               <div className="absolute bottom-4 right-4 bg-white px-2 py-1 text-[8px] font-black uppercase tracking-widest border border-gray-200 shadow-sm">
-                  GPS_ACTIVE
-               </div>
-               {/* Pulsing Dot */}
-               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <div className="w-3 h-3 bg-[#047857] rounded-full animate-ping absolute"></div>
-                  <div className="w-3 h-3 bg-[#047857] rounded-full relative"></div>
-               </div>
-            </div>
+            {/* Update Tracking Button */}
+            <button 
+              onClick={handleUpdateTracking}
+              className="w-full py-5 bg-black text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+            >
+              <Truck size={16} /> Update Tracking
+            </button>
 
-            {/* Manifest Button */}
-            <button className="w-full py-5 bg-[#047857] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#059669] transition-all flex items-center justify-center gap-2">
-              <FileText size={16} /> View Manifest
+            {/* Checkpoints Button */}
+            <button 
+              onClick={handleViewManifest}
+              className="w-full py-5 bg-[#047857] text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#059669] transition-all flex items-center justify-center gap-2 mt-2"
+            >
+              <Package size={16} /> View Checkpoints
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Checkpoints Full Screen Overlay */}
+      {showCheckpoints && selectedOrder && (
+        <div className="fixed inset-0 bg-white z-[100] flex flex-col animate-in fade-in duration-300">
+          {/* Header */}
+          <div className="bg-[#047857] p-12 text-white relative">
+            <button 
+              onClick={() => setShowCheckpoints(false)}
+              className="absolute top-8 right-8 p-2 hover:bg-white/10 transition-colors"
+            >
+              <ChevronLeft size={24} className="rotate-180" />
+            </button>
+            <p className="text-xs font-black uppercase tracking-[0.4em] opacity-60 mb-3">Tracking Detail</p>
+            <div className="flex justify-between items-end">
+               <div>
+                 <h3 className="text-6xl font-black tracking-tighter italic">{selectedOrder.id}</h3>
+                 <p className="text-sm font-bold uppercase tracking-widest mt-2 opacity-80 flex items-center gap-2">
+                   <MapPin size={14} /> {selectedOrder.location}
+                 </p>
+               </div>
+               <div className="border-2 border-white/40 px-4 py-2 font-mono font-bold text-xl">DHL</div>
+            </div>
+          </div>
+
+          {/* Timeline Content */}
+          <div className="flex-1 overflow-y-auto p-12 max-w-4xl mx-auto w-full">
+            <div className="space-y-0 relative pl-4">
+              {/* Vertical Line */}
+              <div className="absolute left-[39px] top-6 bottom-12 w-0.5 bg-gray-200"></div>
+              
+              {(selectedOrder.timeline || []).map((step, idx) => (
+                <div key={idx} className="relative flex gap-10 pb-16">
+                  <div className={`relative w-12 h-12 border-[3px] flex flex-shrink-0 items-center justify-center transition-colors z-10 bg-white ${
+                    step.completed ? 'bg-[#047857] border-[#047857] text-white' : 
+                    step.current ? 'border-[#047857] text-[#047857]' : 
+                    'border-gray-200 text-gray-200'
+                  }`}>
+                    {step.completed ? <Check size={28} strokeWidth={4} /> : <div className={`w-4 h-4 ${step.current ? 'bg-[#047857]' : 'bg-transparent'}`}></div>}
+                  </div>
+                  <div className="pt-1">
+                    <p className={`text-xl font-black tracking-widest uppercase ${
+                      step.completed || step.current ? 'text-gray-900' : 'text-gray-300'
+                    }`}>{step.status}</p>
+                    <p className="text-lg font-bold text-gray-400 mt-2 whitespace-pre-line leading-relaxed">
+                      {step.location ? `${step.location}\n` : ''}{step.time}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {(!selectedOrder.timeline || selectedOrder.timeline.length === 0) && (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <Package size={48} className="text-gray-200 mb-4" />
+                  <p className="text-xl font-black text-gray-300 uppercase tracking-widest">No movement history recorded yet</p>
+                  <p className="text-sm text-gray-400 font-bold mt-2 uppercase">Tracking updates will appear here once logged.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer Close */}
+          <div className="p-12 border-t border-gray-100 flex justify-center">
+            <button 
+              onClick={() => setShowCheckpoints(false)}
+              className="px-12 py-5 bg-black text-white text-xs font-black uppercase tracking-[0.3em] hover:bg-gray-800 transition-all shadow-xl"
+            >
+              Close View
             </button>
           </div>
         </div>
