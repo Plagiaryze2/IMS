@@ -355,7 +355,7 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
             itr.input('qty', sql.Int, item.qty);
             itr.input('price', sql.Decimal(18,2), item.price);
             await itr.query(`
-                INSERT INTO InvoiceItems (InvoiceID, ProductID, Quantity, UnitPrice, SubTotal)
+                INSERT INTO InvoiceItems (InvoiceID, ProductID, Quantity, UnitPrice, Subtotal)
                 VALUES (@iid, @pid, @qty, @price, @qty * @price)
             `);
 
@@ -383,8 +383,66 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
 app.get('/api/suppliers', auth, async (req, res) => {
     try {
         const db = await getPool();
-        const result = await db.request().query('SELECT SupplierID, SupplierName, ContactName, Phone FROM Suppliers ORDER BY SupplierName');
+        const result = await db.request().query('SELECT * FROM Suppliers ORDER BY SupplierName');
         res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/suppliers
+app.post('/api/suppliers', auth, async (req, res) => {
+    const { name, contact, phone, email, address } = req.body;
+    try {
+        const db = await getPool();
+        const r = db.request();
+        r.input('n', sql.NVarChar, name);
+        r.input('c', sql.NVarChar, contact);
+        r.input('p', sql.NVarChar, phone);
+        r.input('e', sql.NVarChar, email);
+        r.input('a', sql.NVarChar, address);
+        
+        const res2 = await r.query(`
+            INSERT INTO Suppliers (SupplierName, ContactName, Phone, Email, Address)
+            OUTPUT INSERTED.SupplierID
+            VALUES (@n, @c, @p, @e, @a)
+        `);
+        res.status(201).json({ id: res2.recordset[0].SupplierID });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/suppliers/:id
+app.put('/api/suppliers/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    const { name, contact, phone, email, address } = req.body;
+    try {
+        const db = await getPool();
+        const r = db.request();
+        r.input('id', sql.Int, id);
+        r.input('n', sql.NVarChar, name);
+        r.input('c', sql.NVarChar, contact);
+        r.input('p', sql.NVarChar, phone);
+        r.input('e', sql.NVarChar, email);
+        r.input('a', sql.NVarChar, address);
+        
+        await r.query(`
+            UPDATE Suppliers 
+            SET SupplierName = @n, ContactName = @c, Phone = @p, Email = @e, Address = @a
+            WHERE SupplierID = @id
+        `);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/suppliers/:id
+app.delete('/api/suppliers/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const db = await getPool();
+        // Check if supplier has orders
+        const check = await db.request().input('id', sql.Int, id).query('SELECT 1 FROM PurchaseOrders WHERE SupplierID = @id');
+        if (check.recordset.length > 0) return res.status(400).json({ error: 'Cannot delete supplier with existing purchase orders.' });
+
+        await db.request().input('id', sql.Int, id).query('DELETE FROM Suppliers WHERE SupplierID = @id');
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -421,7 +479,7 @@ app.post('/api/purchase-orders', auth, async (req, res) => {
             dr.input('qty', sql.Int, item.qty);
             dr.input('cost', sql.Decimal(18,2), item.price);
             await dr.query(`
-                INSERT INTO PurchaseOrderDetails (PurchaseOrderID, ProductID, Quantity, UnitCost, SubTotal)
+                INSERT INTO PurchaseOrderDetails (PurchaseOrderID, ProductID, QuantityOrdered, UnitCost, LineTotal)
                 VALUES (@poid, @pid, @qty, @cost, @qty * @cost)
             `);
         }
@@ -429,6 +487,113 @@ app.post('/api/purchase-orders', auth, async (req, res) => {
         await transaction.commit();
         await addLog('SYNC', `New PO #${poID} issued to Supplier #${supplierID}.`, req.user.userID);
         res.status(201).json({ success: true, poID });
+    } catch (e) {
+        await transaction.rollback();
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/purchase-orders
+app.get('/api/purchase-orders', auth, async (req, res) => {
+    try {
+        const db = await getPool();
+        const result = await db.request().query(`
+            SELECT po.PurchaseOrderID, po.OrderDate, po.TotalAmount, po.Status, s.SupplierName
+            FROM PurchaseOrders po
+            JOIN Suppliers s ON po.SupplierID = s.SupplierID
+            ORDER BY po.OrderDate DESC
+        `);
+        res.json(result.recordset);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/purchase-orders/:id
+app.get('/api/purchase-orders/:id', auth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const db = await getPool();
+        const po = await db.request().input('id', sql.Int, id).query(`
+            SELECT po.*, s.SupplierName, u.FullName as OrderedBy
+            FROM PurchaseOrders po
+            JOIN Suppliers s ON po.SupplierID = s.SupplierID
+            JOIN Users u ON po.OrderedByUserID = u.UserID
+            WHERE po.PurchaseOrderID = @id
+        `);
+        
+        if (po.recordset.length === 0) return res.status(404).json({ error: 'Order not found' });
+
+        const items = await db.request().input('id', sql.Int, id).query(`
+            SELECT pod.PODetailID, pod.PurchaseOrderID, pod.ProductID, pod.QuantityOrdered as Quantity, pod.UnitCost, pod.LineTotal, p.ProductName, p.SKU
+            FROM PurchaseOrderDetails pod
+            JOIN Products p ON pod.ProductID = p.ProductID
+            WHERE pod.PurchaseOrderID = @id
+        `);
+
+        res.json({ ...po.recordset[0], items: items.recordset });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/purchase-orders/:id/status
+app.patch('/api/purchase-orders/:id/status', auth, async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body; // e.g. 'Received', 'Cancelled'
+    
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+    try {
+        await transaction.begin();
+        const r = new sql.Request(transaction);
+        r.input('id', sql.Int, id);
+        r.input('status', sql.NVarChar, status);
+
+        // 1. Get current status to prevent double-receiving
+        const currentRes = await r.query('SELECT Status FROM PurchaseOrders WHERE PurchaseOrderID = @id');
+        if (currentRes.recordset.length === 0) throw new Error('Order not found');
+        const oldStatus = currentRes.recordset[0].Status;
+
+        if (oldStatus === 'Received') throw new Error('Order already received');
+        if (oldStatus === 'Cancelled') throw new Error('Order is cancelled');
+
+        // 2. Update status
+        await r.query('UPDATE PurchaseOrders SET Status = @status WHERE PurchaseOrderID = @id');
+
+        // 3. If RECEIVED, update inventory
+        if (status === 'Received') {
+            const itemsRes = await new sql.Request(transaction).input('id', sql.Int, id).query(`
+                SELECT ProductID, QuantityOrdered as Quantity FROM PurchaseOrderDetails WHERE PurchaseOrderID = @id
+            `);
+            
+            for (const item of itemsRes.recordset) {
+                const ur = new sql.Request(transaction);
+                ur.input('pid', sql.Int, item.ProductID);
+                ur.input('qty', sql.Int, item.Quantity);
+                
+                // Update stock
+                await ur.query('UPDATE Inventory SET QuantityOnHand = QuantityOnHand + @qty, LastUpdated = GETDATE() WHERE ProductID = @pid');
+                
+                // Log transaction
+                const tr = new sql.Request(transaction);
+                tr.input('pid', sql.Int, item.ProductID);
+                tr.input('qty', sql.Int, item.Quantity);
+                tr.input('uid', sql.Int, req.user.userID);
+                tr.input('poID', sql.Int, id);
+                await tr.query(`
+                    INSERT INTO InventoryTransactions (ProductID, WarehouseID, TransactionType, Quantity, TransactionDate, PerformedByUserID, Remarks, ReferenceType)
+                    VALUES (@pid, 1, 'ADJUSTMENT', @qty, GETDATE(), @uid, 'PO Receipt #' + CAST(@poID AS VARCHAR), 'Adjustment')
+                `);
+
+                // Update status (OPTIMAL/REORDER_WARNING)
+                await new sql.Request(transaction).input('pid', sql.Int, item.ProductID).query(`
+                    UPDATE i SET i.Status = 
+                        CASE WHEN i.QuantityOnHand = 0 THEN 'CRITICAL_SHORTAGE' WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING' ELSE 'OPTIMAL' END
+                    FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID WHERE i.ProductID = @pid
+                `);
+            }
+        }
+
+        await transaction.commit();
+        await addLog('SYNC', `PO #${id} status updated to ${status}.`, req.user.userID);
+        res.json({ success: true });
     } catch (e) {
         await transaction.rollback();
         res.status(500).json({ error: e.message });
