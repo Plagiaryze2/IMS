@@ -1,11 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const cors    = require('cors');
-const sql     = require('mssql/msnodesqlv8');
-const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
+const cors = require('cors');
+const sql = require('mssql/msnodesqlv8');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'ims_secret_2026';
 
@@ -14,10 +14,10 @@ app.use(express.json());
 
 // ─── DB Config ───────────────────────────────────────────────────────────────
 const dbConfig = {
-    server:   process.env.DB_SERVER   || 'LAPTOP-8ASCIT8B',
+    server: process.env.DB_SERVER || 'LAPTOP-8ASCIT8B',
     database: process.env.DB_DATABASE || 'InventoryManagementSystemDB',
-    driver:   'ODBC Driver 17 for SQL Server',
-    options:  { trustedConnection: true }
+    driver: 'ODBC Driver 17 for SQL Server',
+    options: { trustedConnection: true }
 };
 
 let pool;
@@ -45,10 +45,10 @@ async function addLog(type, message, userID = null) {
         const db = await getPool();
         const r = db.request();
         r.input('type', sql.NVarChar, type);
-        r.input('msg',  sql.NVarChar, message);
-        r.input('uid',  sql.Int, userID);
+        r.input('msg', sql.NVarChar, message);
+        r.input('uid', sql.Int, userID);
         await r.query('INSERT INTO SystemLogs (LogType, Message, UserID) VALUES (@type, @msg, @uid)');
-    } catch(e) { /* non-fatal */ }
+    } catch (e) { /* non-fatal */ }
 }
 
 // ─── HEALTH ──────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
     try {
         const db = await getPool();
-        const r  = db.request();
+        const r = db.request();
         r.input('username', sql.NVarChar, username);
         const result = await r.query(`
             SELECT u.UserID, u.Username, u.FullName, u.Email, u.PasswordHash,
@@ -72,7 +72,7 @@ app.post('/api/auth/login', async (req, res) => {
             FROM Users u
             LEFT JOIN UserRoles ur ON u.UserID = ur.UserID
             LEFT JOIN Roles ro ON ur.RoleID = ro.RoleID
-            WHERE u.Username = @username AND u.IsActive = 1
+            WHERE (u.Username = @username OR u.Email = @username) AND u.IsActive = 1
         `);
         if (result.recordset.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
         const user = result.recordset[0];
@@ -106,7 +106,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     try {
         const db = await getPool();
-        
+
         // Check if user exists
         const check = await db.request()
             .input('e', sql.NVarChar, email)
@@ -114,7 +114,7 @@ app.post('/api/auth/register', async (req, res) => {
         if (check.recordset.length > 0) return res.status(400).json({ error: 'Email already registered' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        
+
         // Insert User
         const userResult = await db.request()
             .input('fn', sql.NVarChar, fullName)
@@ -125,7 +125,7 @@ app.post('/api/auth/register', async (req, res) => {
                 OUTPUT INSERTED.UserID
                 VALUES (@e, @fn, @e, @ph, 1, GETDATE(), 0)
             `);
-        
+
         const userId = userResult.recordset[0].UserID;
 
         // Map accountType to RoleID
@@ -193,7 +193,7 @@ app.get('/api/customers', auth, async (req, res) => {
 app.get('/api/search', auth, async (req, res) => {
     const q = req.query.q || '';
     if (!q || q.length < 2) return res.json([]);
-    
+
     try {
         const db = await getPool();
         const like = `%${q}%`;
@@ -287,7 +287,7 @@ app.get('/api/sales/invoices', auth, async (req, res) => {
         if (search) query += ` AND (i.InvoiceID LIKE '%${search}%' OR c.CustomerName LIKE '%${search}%')`;
         if (status && status !== 'ALL') query += ` AND i.InvoiceStatus = '${status}'`;
         query += ' ORDER BY i.InvoiceDate DESC';
-        
+
         const result = await db.request().query(query);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -362,7 +362,7 @@ app.post('/api/shipments/:id/tracking', auth, async (req, res) => {
     const transaction = new sql.Transaction(await getPool());
     try {
         await transaction.begin();
-        
+
         // 1. Update Deliveries table DeliveryStatus
         const updateReq = new sql.Request(transaction);
         updateReq.input('did', sql.Int, deliveryId);
@@ -402,7 +402,7 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
 
         r.input('cid', sql.Int, customerID);
         r.input('uid', sql.Int, req.user.userID);
-        r.input('total', sql.Decimal(18,2), total);
+        r.input('total', sql.Decimal(18, 2), total);
         const soRes = await r.query(`
             INSERT INTO SalesOrders (CustomerID, CreatedByUserID, OrderDate, Status, TotalAmount, ShippingAddress)
             OUTPUT INSERTED.SalesOrderID
@@ -413,9 +413,9 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
         const ir = new sql.Request(transaction);
         ir.input('soid', sql.Int, salesOrderID);
         ir.input('cid', sql.Int, customerID);
-        ir.input('total', sql.Decimal(18,2), total);
+        ir.input('total', sql.Decimal(18, 2), total);
         ir.input('status', sql.NVarChar, status);
-        ir.input('due', sql.DateTime, dueDate || new Date(Date.now() + 7*24*60*60*1000));
+        ir.input('due', sql.DateTime, dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
         const invRes = await ir.query(`
             INSERT INTO Invoices (SalesOrderID, CustomerID, TotalAmount, InvoiceStatus, DueDate, InvoiceDate)
             OUTPUT INSERTED.InvoiceID
@@ -428,7 +428,7 @@ app.post('/api/sales/invoice', auth, async (req, res) => {
             itr.input('iid', sql.Int, invoiceID);
             itr.input('pid', sql.Int, item.productID);
             itr.input('qty', sql.Int, item.qty);
-            itr.input('price', sql.Decimal(18,2), item.price);
+            itr.input('price', sql.Decimal(18, 2), item.price);
             await itr.query(`
                 INSERT INTO InvoiceItems (InvoiceID, ProductID, Quantity, UnitPrice, Subtotal)
                 VALUES (@iid, @pid, @qty, @price, @qty * @price)
@@ -457,11 +457,11 @@ app.post('/api/sales/invoice/:id/ship', auth, async (req, res) => {
         await transaction.begin();
         const r = new sql.Request(transaction);
         r.input('iid', sql.Int, id);
-        
+
         const invRes = await r.query('SELECT SalesOrderID, CustomerID FROM Invoices WHERE InvoiceID = @iid');
         if (invRes.recordset.length === 0) throw new Error('Invoice not found');
         const { SalesOrderID, CustomerID } = invRes.recordset[0];
-        
+
         const custRes = await r.query(`SELECT Address FROM Customers WHERE CustomerID = ${CustomerID}`);
         const destinationAddress = custRes.recordset[0]?.Address || 'Customer Address';
 
@@ -503,7 +503,7 @@ app.get('/api/sales/invoice/:id', auth, async (req, res) => {
             LEFT JOIN SalesOrders so ON i.SalesOrderID = so.SalesOrderID
             WHERE i.InvoiceID = @id
         `);
-        
+
         if (invoice.recordset.length === 0) return res.status(404).json({ error: 'Invoice not found' });
 
         const items = await db.request().input('id', sql.Int, id).query(`
@@ -527,7 +527,7 @@ app.patch('/api/sales/invoice/:id/status', auth, async (req, res) => {
             .input('id', sql.Int, id)
             .input('status', sql.NVarChar, status)
             .query('UPDATE Invoices SET InvoiceStatus = @status WHERE InvoiceID = @id');
-        
+
         await addLog('SALES', `Invoice #${id} status updated to ${status}`, req.user.userID);
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -557,7 +557,7 @@ app.post('/api/suppliers', auth, async (req, res) => {
         r.input('p', sql.NVarChar, phone);
         r.input('e', sql.NVarChar, email);
         r.input('a', sql.NVarChar, address);
-        
+
         const res2 = await r.query(`
             INSERT INTO Suppliers (SupplierName, ContactName, Phone, Email, Address)
             OUTPUT INSERTED.SupplierID
@@ -580,7 +580,7 @@ app.put('/api/suppliers/:id', auth, async (req, res) => {
         r.input('p', sql.NVarChar, phone);
         r.input('e', sql.NVarChar, email);
         r.input('a', sql.NVarChar, address);
-        
+
         await r.query(`
             UPDATE Suppliers 
             SET SupplierName = @n, ContactName = @c, Phone = @p, Email = @e, Address = @a
@@ -621,7 +621,7 @@ app.post('/api/purchase-orders', auth, async (req, res) => {
         // 1. Create Purchase Order
         r.input('sid', sql.Int, supplierID);
         r.input('uid', sql.Int, req.user.userID);
-        r.input('total', sql.Decimal(18,2), totalAmount);
+        r.input('total', sql.Decimal(18, 2), totalAmount);
         const poRes = await r.query(`
             INSERT INTO PurchaseOrders (SupplierID, OrderDate, TotalAmount, Status, OrderedByUserID, WarehouseID)
             OUTPUT INSERTED.PurchaseOrderID
@@ -635,7 +635,7 @@ app.post('/api/purchase-orders', auth, async (req, res) => {
             dr.input('poid', sql.Int, poID);
             dr.input('pid', sql.Int, item.productID);
             dr.input('qty', sql.Int, item.qty);
-            dr.input('cost', sql.Decimal(18,2), item.price);
+            dr.input('cost', sql.Decimal(18, 2), item.price);
             await dr.query(`
                 INSERT INTO PurchaseOrderDetails (PurchaseOrderID, ProductID, QuantityOrdered, UnitCost, LineTotal)
                 VALUES (@poid, @pid, @qty, @cost, @qty * @cost)
@@ -677,7 +677,7 @@ app.get('/api/purchase-orders/:id', auth, async (req, res) => {
             JOIN Users u ON po.OrderedByUserID = u.UserID
             WHERE po.PurchaseOrderID = @id
         `);
-        
+
         if (po.recordset.length === 0) return res.status(404).json({ error: 'Order not found' });
 
         const items = await db.request().input('id', sql.Int, id).query(`
@@ -695,7 +695,7 @@ app.get('/api/purchase-orders/:id', auth, async (req, res) => {
 app.patch('/api/purchase-orders/:id/status', auth, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body; // e.g. 'Received', 'Cancelled'
-    
+
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
     try {
@@ -720,15 +720,15 @@ app.patch('/api/purchase-orders/:id/status', auth, async (req, res) => {
             const itemsRes = await new sql.Request(transaction).input('id', sql.Int, id).query(`
                 SELECT ProductID, QuantityOrdered as Quantity FROM PurchaseOrderDetails WHERE PurchaseOrderID = @id
             `);
-            
+
             for (const item of itemsRes.recordset) {
                 const ur = new sql.Request(transaction);
                 ur.input('pid', sql.Int, item.ProductID);
                 ur.input('qty', sql.Int, item.Quantity);
-                
+
                 // Update stock
                 await ur.query('UPDATE Inventory SET QuantityOnHand = QuantityOnHand + @qty, LastUpdated = GETDATE() WHERE ProductID = @pid');
-                
+
                 // Log transaction
                 const tr = new sql.Request(transaction);
                 tr.input('pid', sql.Int, item.ProductID);
@@ -791,7 +791,7 @@ app.get('/api/warehouse/inventory', auth, async (req, res) => {
         `;
         if (aisle) query += ` AND i.Aisle = '${aisle}'`;
         if (warehouseId) query += ` AND i.WarehouseID = ${warehouseId}`;
-        
+
         const result = await db.request().query(query);
         res.json(result.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -825,7 +825,7 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
     if (!productId || !sourceWarehouseId || !destWarehouseId || !qty || qty <= 0) {
         return res.status(400).json({ error: 'Invalid transfer parameters' });
     }
-    
+
     if (sourceWarehouseId === destWarehouseId) {
         return res.status(400).json({ error: 'Source and destination warehouses cannot be the same' });
     }
@@ -846,7 +846,7 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
             WHERE w.WarehouseID = @dwid
             GROUP BY w.MaxCapacity
         `);
-    
+
     if (capCheck.recordset.length > 0) {
         const { MaxCapacity, CurrentStock } = capCheck.recordset[0];
         if (CurrentStock + qty > MaxCapacity) {
@@ -856,13 +856,13 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
     const transaction = new sql.Transaction(await getPool());
     try {
         await transaction.begin();
-        
+
         // 1. Check source stock
         const checkReq = new sql.Request(transaction);
         checkReq.input('pid', sql.Int, productId);
         checkReq.input('swid', sql.Int, sourceWarehouseId);
         const sourceCheck = await checkReq.query(`SELECT QuantityOnHand, InventoryID FROM Inventory WHERE ProductID = @pid AND WarehouseID = @swid`);
-        
+
         if (sourceCheck.recordset.length === 0 || sourceCheck.recordset[0].QuantityOnHand < qty) {
             throw new Error('Insufficient stock in source warehouse');
         }
@@ -884,7 +884,7 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
         incReq.input('shelf', sql.NVarChar, shelf);
         incReq.input('bin', sql.NVarChar, bin);
         const destCheck = await incReq.query(`SELECT InventoryID FROM Inventory WHERE ProductID = @pid AND WarehouseID = @dwid`);
-        
+
         if (destCheck.recordset.length > 0) {
             // Always prefer user-entered values; fall back to existing values if blank
             await incReq.query(`
@@ -917,9 +917,9 @@ app.post('/api/warehouse/transfer', auth, async (req, res) => {
         await transaction.commit();
         await addLog('WAREHOUSE', `Transferred ${qty} units of Product ${productId} from WH ${sourceWarehouseId} to WH ${destWarehouseId}.`, req.user.userID);
         res.json({ success: true });
-    } catch (e) { 
+    } catch (e) {
         await transaction.rollback();
-        res.status(500).json({ error: e.message }); 
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -973,7 +973,7 @@ app.get('/api/user/dashboard/activity', auth, async (req, res) => {
 app.get('/api/user/reports/stats', auth, async (req, res) => {
     try {
         const db = await getPool();
-        
+
         // 1. Core KPIs
         const kpis = await db.request().query(`
             SELECT
@@ -982,7 +982,7 @@ app.get('/api/user/reports/stats', auth, async (req, res) => {
                 (SELECT COUNT(*) FROM SalesOrders WHERE Status IN ('Pending', 'Processing')) AS activeOrders,
                 (SELECT ISNULL(SUM(p.UnitPrice * i.QuantityOnHand), 0) FROM Inventory i JOIN Products p ON i.ProductID = p.ProductID) AS inventoryValue
         `);
-        
+
         // 2. Top Products
         const topProducts = await db.request().query(`
             SELECT TOP 5 p.ProductName, SUM(ii.Quantity) as units, 
@@ -1074,7 +1074,7 @@ app.get('/api/dashboard/chart', auth, async (req, res) => {
         // Fallback mock trend data if no transactions
         if (!data || data.recordset.length === 0) {
             return res.json([18000, 23000, 39000, 33000, 60000, 55000, 80000, 70000, 85000, 75000, 98000]
-                .map((v, i) => ({ week: `D${i+1}`, value: mode.includes('UnitPrice') ? v * 2.5 : v })));
+                .map((v, i) => ({ week: `D${i + 1}`, value: mode.includes('UnitPrice') ? v * 2.5 : v })));
         }
         res.json(data.recordset);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1144,12 +1144,12 @@ app.get('/api/inventory', auth, async (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
     try {
         const db = await getPool();
-        const r  = db.request();
-        r.input('search',   sql.NVarChar, `%${search}%`);
+        const r = db.request();
+        r.input('search', sql.NVarChar, `%${search}%`);
         r.input('category', sql.NVarChar, category);
-        r.input('status',   sql.NVarChar, status);
-        r.input('offset',   sql.Int, offset);
-        r.input('limit',    sql.Int, parseInt(limit));
+        r.input('status', sql.NVarChar, status);
+        r.input('offset', sql.Int, offset);
+        r.input('limit', sql.Int, parseInt(limit));
 
         const countResult = await r.query(`
             SELECT COUNT(*) AS total
@@ -1261,34 +1261,34 @@ async function bulkAdjust(req, res) {
 
 // POST /api/inventory  — Add new SKU
 app.post('/api/inventory', auth, async (req, res) => {
-    const { 
-        sku, productName, categoryID, supplierID = 1, 
-        unitPrice, costPrice, reorderLevel = 10, 
+    const {
+        sku, productName, categoryID, supplierID = 1,
+        unitPrice, costPrice, reorderLevel = 10,
         stock = 0, warehouseID = 1, description = '',
         brand = '', barcode = '', taxRate = 20.0
     } = req.body;
 
     if (!sku || !productName || !unitPrice) return res.status(400).json({ error: 'SKU, Product Name and Unit Price are required.' });
-    
+
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
     try {
         await transaction.begin();
-        
+
         // 1. Insert product (Handling brand, barcode if columns exist, else ignore)
         const r = new sql.Request(transaction);
         r.input('sku', sql.NVarChar, sku);
         r.input('name', sql.NVarChar, productName);
         r.input('catID', sql.Int, categoryID || 1);
         r.input('supID', sql.Int, supplierID);
-        r.input('price', sql.Decimal(18,2), parseFloat(unitPrice));
-        r.input('cost', sql.Decimal(18,2), parseFloat(costPrice || unitPrice * 0.7));
+        r.input('price', sql.Decimal(18, 2), parseFloat(unitPrice));
+        r.input('cost', sql.Decimal(18, 2), parseFloat(costPrice || unitPrice * 0.7));
         r.input('reorder', sql.Int, parseInt(reorderLevel));
         r.input('desc', sql.NVarChar, description);
         r.input('brand', sql.NVarChar, brand);
         r.input('barcode', sql.NVarChar, barcode);
-        r.input('tax', sql.Decimal(5,2), parseFloat(taxRate));
-        
+        r.input('tax', sql.Decimal(5, 2), parseFloat(taxRate));
+
         // We use a dynamic check or just assume they exist if we are standardizing the schema
         const prod = await r.query(`
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Products') AND name = 'Brand')
@@ -1341,7 +1341,7 @@ app.put('/api/inventory/:id', auth, async (req, res) => {
     const { stock, status, unitPrice, productName, description } = req.body;
     try {
         const db = await getPool();
-        
+
         // 1. Update Inventory Table (if stock changed)
         if (stock !== undefined) {
             const r = db.request();
@@ -1349,7 +1349,7 @@ app.put('/api/inventory/:id', auth, async (req, res) => {
             r.input('qty', sql.Int, parseInt(stock));
             r.input('status', sql.NVarChar,
                 parseInt(stock) === 0 ? 'CRITICAL_SHORTAGE' :
-                status || 'OPTIMAL'
+                    status || 'OPTIMAL'
             );
             await r.query('UPDATE Inventory SET QuantityOnHand = @qty, Status = @status, LastUpdated = GETDATE() WHERE ProductID = @pid');
         }
@@ -1358,10 +1358,10 @@ app.put('/api/inventory/:id', auth, async (req, res) => {
         if (unitPrice !== undefined || productName || description !== undefined) {
             const r2 = db.request();
             r2.input('pid', sql.Int, parseInt(id));
-            
+
             let updateFields = [];
             if (unitPrice !== undefined) {
-                r2.input('price', sql.Decimal(18,2), parseFloat(unitPrice));
+                r2.input('price', sql.Decimal(18, 2), parseFloat(unitPrice));
                 updateFields.push('UnitPrice = @price');
             }
             if (productName) {
@@ -1548,7 +1548,7 @@ app.post('/api/alerts', auth, async (req, res) => {
         const db = await getPool();
         const r = db.request();
         r.input('type', sql.NVarChar, type);
-        r.input('cat',  sql.NVarChar, category);
+        r.input('cat', sql.NVarChar, category);
         r.input('title', sql.NVarChar, title);
         r.input('desc', sql.NVarChar, description);
         r.input('rid', sql.Int, relatedID || null);

@@ -165,8 +165,8 @@ CREATE TABLE [InvoiceItems] (
     [InvoiceID] INT NOT NULL,
     [ProductID] INT NOT NULL,
     [Quantity] INT NOT NULL,
-    [UnitPrice] DECIMAL NOT NULL,
-    [SubTotal] DECIMAL NOT NULL,
+    [UnitPrice] DECIMAL(18,2) NOT NULL,
+    [SubTotal] DECIMAL(18,2) NOT NULL,
     PRIMARY KEY ([ItemID])
 );
 GO
@@ -182,7 +182,7 @@ CREATE TABLE [Invoices] (
     [CustomerID] INT NOT NULL,
     [InvoiceDate] DATE NOT NULL,
     [DueDate] DATE NOT NULL,
-    [TotalAmount] DECIMAL NOT NULL,
+    [TotalAmount] DECIMAL(18,2) NOT NULL,
     [InvoiceStatus] VARCHAR(20) NOT NULL DEFAULT ('Unpaid'),
     PRIMARY KEY ([InvoiceID])
 );
@@ -213,7 +213,7 @@ CREATE TABLE [Payments] (
     [PaymentID] INT IDENTITY(1,1) NOT NULL,
     [InvoiceID] INT NOT NULL,
     [PaymentDate] DATE NOT NULL,
-    [AmountPaid] DECIMAL NOT NULL,
+    [AmountPaid] DECIMAL(18,2) NOT NULL,
     [PaymentMethod] VARCHAR(20) NOT NULL,
     [PaymentStatus] VARCHAR(20) NOT NULL DEFAULT ('Completed'),
     [ReceivedByUserID] INT NOT NULL,
@@ -245,13 +245,16 @@ CREATE TABLE [Products] (
     [SKU] VARCHAR(50) NOT NULL,
     [CategoryID] INT NOT NULL,
     [SupplierID] INT NOT NULL,
-    [UnitPrice] DECIMAL NOT NULL,
-    [CostPrice] DECIMAL NOT NULL,
+    [UnitPrice] DECIMAL(18,2) NOT NULL,
+    [CostPrice] DECIMAL(18,2) NOT NULL,
     [ReorderLevel] INT NOT NULL DEFAULT ((0)),
     [UnitOfMeasure] VARCHAR(20) NOT NULL DEFAULT ('Piece'),
     [IsActive] BIT NOT NULL DEFAULT ((1)),
     [CreatedAt] DATETIME2 NOT NULL DEFAULT (sysdatetime()),
     [Description] NVARCHAR(500) NULL,
+    [Brand] NVARCHAR(100) NULL,
+    [Barcode] NVARCHAR(100) NULL,
+    [TaxRate] DECIMAL(5,2) DEFAULT 20.0,
     PRIMARY KEY ([ProductID])
 );
 GO
@@ -266,8 +269,8 @@ CREATE TABLE [PurchaseOrderDetails] (
     [PurchaseOrderID] INT NOT NULL,
     [ProductID] INT NOT NULL,
     [QuantityOrdered] INT NOT NULL,
-    [UnitCost] DECIMAL NOT NULL,
-    [LineTotal] DECIMAL NOT NULL,
+    [UnitCost] DECIMAL(18,2) NOT NULL,
+    [LineTotal] DECIMAL(18,2) NOT NULL,
     PRIMARY KEY ([PODetailID])
 );
 GO
@@ -285,7 +288,7 @@ CREATE TABLE [PurchaseOrders] (
     [OrderDate] DATE NOT NULL,
     [ExpectedDate] DATE NULL,
     [Status] VARCHAR(20) NOT NULL DEFAULT ('Pending'),
-    [TotalAmount] DECIMAL NOT NULL DEFAULT ((0)),
+    [TotalAmount] DECIMAL(18,2) NOT NULL DEFAULT ((0)),
     PRIMARY KEY ([PurchaseOrderID])
 );
 GO
@@ -326,9 +329,9 @@ CREATE TABLE [SalesOrderDetails] (
     [SalesOrderID] INT NOT NULL,
     [ProductID] INT NOT NULL,
     [QuantitySold] INT NOT NULL,
-    [UnitPrice] DECIMAL NOT NULL,
-    [DiscountAmount] DECIMAL NOT NULL DEFAULT ((0)),
-    [LineTotal] DECIMAL NOT NULL,
+    [UnitPrice] DECIMAL(18,2) NOT NULL,
+    [DiscountAmount] DECIMAL(18,2) NOT NULL DEFAULT ((0)),
+    [LineTotal] DECIMAL(18,2) NOT NULL,
     PRIMARY KEY ([SODetailID])
 );
 GO
@@ -344,7 +347,7 @@ CREATE TABLE [SalesOrders] (
     [CreatedByUserID] INT NOT NULL,
     [OrderDate] DATE NOT NULL,
     [Status] VARCHAR(20) NOT NULL DEFAULT ('Pending'),
-    [TotalAmount] DECIMAL NOT NULL DEFAULT ((0)),
+    [TotalAmount] DECIMAL(18,2) NOT NULL DEFAULT ((0)),
     [ShippingAddress] VARCHAR(255) NULL,
     PRIMARY KEY ([SalesOrderID])
 );
@@ -365,6 +368,21 @@ CREATE TABLE [Suppliers] (
     [City] VARCHAR(100) NULL,
     [IsActive] BIT NOT NULL DEFAULT ((1)),
     PRIMARY KEY ([SupplierID])
+);
+GO
+
+-- --------------------------------------------------
+-- Table: SystemLogs
+-- --------------------------------------------------
+IF OBJECT_ID('[SystemLogs]', 'U') IS NOT NULL DROP TABLE [SystemLogs];
+GO
+CREATE TABLE [SystemLogs] (
+    [LogID] INT IDENTITY(1,1) NOT NULL,
+    [LogType] NVARCHAR(20) NOT NULL,
+    [Message] NVARCHAR(500) NOT NULL,
+    [CreatedAt] DATETIME NOT NULL DEFAULT (getdate()),
+    [UserID] INT NULL,
+    PRIMARY KEY ([LogID])
 );
 GO
 
