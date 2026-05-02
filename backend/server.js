@@ -1245,7 +1245,7 @@ app.get('/api/inventory', auth, async (req, res) => {
 
         const result = await r.query(`
             SELECT p.ProductID, p.SKU, p.ProductName, c.CategoryName AS Category,
-                   i.QuantityOnHand AS Stock, p.UnitPrice,
+                   i.QuantityOnHand AS Stock, p.UnitPrice, p.CostPrice,
                    CASE
                        WHEN i.QuantityOnHand <= 0           THEN 'CRITICAL_SHORTAGE'
                        WHEN i.QuantityOnHand <= p.ReorderLevel THEN 'REORDER_WARNING'

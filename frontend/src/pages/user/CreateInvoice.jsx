@@ -67,6 +67,7 @@ const CreateInvoice = () => {
         stock: p.Stock,
         qty: 1,
         price: parseFloat(p.UnitPrice || 0),
+        cost: parseFloat(p.CostPrice || 0),
         disc: 0
       }]);
     }
@@ -162,6 +163,19 @@ const CreateInvoice = () => {
     }
 
     try {
+      const belowCost = lineItems.find(i => i.price < i.cost);
+      if (belowCost) {
+        const confirm = await Swal.fire({
+          title: 'Selling Below Cost',
+          text: `Product "${belowCost.name}" is being sold below its cost price. Do you want to proceed?`,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonText: 'Yes, proceed',
+          cancelButtonText: 'No, fix it'
+        });
+        if (!confirm.isConfirmed) return;
+      }
+
       Swal.fire({ title: 'Processing...', didOpen: () => Swal.showLoading() });
       await salesAPI.createInvoice({
         customerID: selectedCustomerID,
@@ -261,7 +275,15 @@ const CreateInvoice = () => {
                     className="w-16 border border-gray-100 p-2 text-center text-xs font-bold bg-transparent" 
                   />
                 </td>
-                <td className="px-6 py-5 text-right text-xs font-bold">{item.price.toFixed(2)}</td>
+                <td className="px-6 py-5 text-right">
+                  <input 
+                    type="number" 
+                    value={item.price} 
+                    onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                    className={`w-24 border-b border-gray-100 p-2 text-right text-xs font-bold bg-transparent focus:outline-none focus:border-black ${item.price < item.cost ? 'text-red-600' : 'text-gray-900'}`} 
+                  />
+                  {item.price < item.cost && <p className="text-[8px] font-black text-red-500 uppercase mt-1">Below Cost</p>}
+                </td>
                 <td className="px-6 py-5 text-right text-xs font-black text-gray-900">
                   {(item.qty * item.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
