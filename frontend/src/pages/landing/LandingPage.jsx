@@ -1,15 +1,16 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Package, 
-  ShoppingCart, 
-  Truck, 
-  Users, 
-  BarChart3, 
+import {
+  Package,
+  ShoppingCart,
+  Truck,
+  Users,
+  BarChart3,
   ShieldCheck,
   Database,
   Code2,
-  RefreshCw
+  RefreshCw,
+  Activity
 } from 'lucide-react';
 
 const ModuleCard = ({ number, title, description, Icon }) => (
@@ -52,15 +53,11 @@ const LandingPage = () => {
           A comprehensive system for tracking product lifecycles, warehouse logistics, and real-time stock analytics. Engineered for precision and operational speed.
         </p>
         <div className="flex flex-wrap justify-center gap-4">
-          <button 
+          <button
             onClick={() => navigate('/register')}
             className="bg-[#047857] text-white px-10 py-4 text-xs font-black tracking-widest uppercase hover:bg-[#059669] transition-all duration-300"
           >
             Initialize System
-          </button>
-
-          <button className="px-10 py-4 text-xs font-black tracking-widest uppercase hover:bg-gray-50 transition-all duration-300">
-            Read Documentation
           </button>
         </div>
       </section>
@@ -68,39 +65,39 @@ const LandingPage = () => {
       {/* Modules Grid */}
       <section className="bg-gray-50/50 border-t border-b border-gray-100 py-24 px-8">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          <ModuleCard 
-            number="01" 
-            title="Inventory & Products" 
+          <ModuleCard
+            number="01"
+            title="Inventory & Products"
             description="SKU management, barcode integration, and real-time tracking across distributed networks."
             Icon={Package}
           />
-          <ModuleCard 
-            number="02" 
-            title="Purchase & Sales" 
+          <ModuleCard
+            number="02"
+            title="Purchase & Sales"
             description="Order processing, automated invoicing, and transaction ledger synchronization."
             Icon={ShoppingCart}
           />
-          <ModuleCard 
-            number="03" 
-            title="Warehouse Logistics" 
+          <ModuleCard
+            number="03"
+            title="Warehouse Logistics"
             description="Multi-location bin mapping, shelf management, and optimized picking routes."
             Icon={Truck}
           />
-          <ModuleCard 
-            number="04" 
-            title="Supplier Portal" 
+          <ModuleCard
+            number="04"
+            title="Instant Supply Orders"
             description="Vendor profiles, procurement history, and automated restock signaling."
             Icon={Users}
           />
-          <ModuleCard 
-            number="05" 
-            title="Analytics Core" 
+          <ModuleCard
+            number="05"
+            title="Analytics Core"
             description="High-density data visualization, stock aging reports, and predictive velocity metrics."
             Icon={BarChart3}
           />
-          <ModuleCard 
-            number="06" 
-            title="Admin Control" 
+          <ModuleCard
+            number="06"
+            title="Admin Control"
             description="Granular role-based access, system audit logs, and security protocol management."
             Icon={ShieldCheck}
           />
@@ -115,19 +112,19 @@ const LandingPage = () => {
             <h2 className="text-4xl font-bold text-gray-900">Core System Samples</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3">
-            <SpecCard 
-              title="Database Architecture" 
+            <SpecCard
+              title="Database Architecture"
               description="A highly optimized, robust relational schema ensuring transactional integrity. Designed for massive scalability, rapid query execution, and seamless data normalization."
               Icon={Database}
             />
-            <SpecCard 
-              title="API Documentation" 
-              description="Comprehensive RESTful endpoints enabling secure, standardized third-party integrations. Built with developer-friendly request/response contracts and clear authentication flows."
-              Icon={Code2}
+            <SpecCard
+              title="System Logs"
+              description="Detailed audit trails and operational event logging capturing every system interaction. Real-time monitoring of SKU movements, user actions, and automated inventory adjustments."
+              Icon={Activity}
             />
-            <SpecCard 
-              title="Real-time Syncing" 
-              description="Bi-directional WebSocket pipelines and intelligent polling mechanisms delivering live operational dashboard updates with microsecond latency."
+            <SpecCard
+              title="Real-time Syncing"
+              description="Advanced data synchronization utilizing complex SQL queries and optimized indexing for near-zero latency and ensuring immediate consistency across all distributed warehouse nodes."
               Icon={RefreshCw}
             />
           </div>
@@ -137,14 +134,10 @@ const LandingPage = () => {
       {/* Footer */}
       <footer className="px-8 py-16 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-8">
         <div className="flex items-center gap-8">
-          <span className="text-xl font-black tracking-tighter">IMS_Project</span>
-          <div className="flex gap-6">
-            <button className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors">Project Documentation</button>
-            <button className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors">Technical Stack</button>
-          </div>
+          <span className="text-xl font-black tracking-tighter">CODERED IMS</span>
         </div>
         <div className="text-[10px] font-bold text-gray-400 tracking-widest uppercase">
-          © 2026 IMS_Core Systems. Operator_V1.0.0
+          © 2026 CODERED IMS
         </div>
       </footer>
     </div>
