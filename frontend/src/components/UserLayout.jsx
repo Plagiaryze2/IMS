@@ -120,7 +120,7 @@ const UserLayout = () => {
       <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 z-50 flex-shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4 border-r border-gray-200 pr-6 mr-2">
-            <span className="text-xl font-black tracking-tighter text-gray-900">IMS_CORE_v1.0</span>
+            <span className="text-xl font-black tracking-tighter text-gray-900">CODERED IMS</span>
             <div className="h-4 w-[2px] bg-gray-200"></div>
             <span className="text-[10px] font-black uppercase tracking-widest text-[#047857] animate-pulse">Live_Ops</span>
           </div>
@@ -244,7 +244,6 @@ const UserLayout = () => {
           <div className="flex items-center gap-3 pl-6 border-l border-gray-200">
             <div className="text-right">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-900">{user?.username || 'OPERATOR_01'}</p>
-              <p className="text-[8px] font-bold text-[#047857] uppercase tracking-widest mt-0.5">Sys_Admin_V1</p>
             </div>
             <div className="w-10 h-10 bg-gray-100 rounded-sm flex items-center justify-center border border-gray-200">
               <UserIcon size={20} className="text-gray-400" />
