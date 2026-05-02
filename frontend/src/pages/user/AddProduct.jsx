@@ -63,6 +63,9 @@ const AddProduct = () => {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.category) return Swal.fire('Error', 'Please select a category', 'error');
+    if (parseFloat(formData.sellingPrice) < parseFloat(formData.unitCost)) {
+      return Swal.fire('Error', 'Selling Price cannot be lower than Unit Cost.', 'error');
+    }
     
     setLoading(true);
     try {

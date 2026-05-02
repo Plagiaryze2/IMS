@@ -41,6 +41,7 @@ const UserInventory = () => {
     name: '',
     sku: '',
     price: '',
+    cost: '',
     description: ''
   });
 
@@ -144,6 +145,9 @@ const UserInventory = () => {
   };
 
   const handleEditSubmit = async () => {
+    if (parseFloat(editData.price) < parseFloat(editData.cost)) {
+      return Swal.fire('Error', 'Selling Price cannot be lower than Unit Cost.', 'error');
+    }
     try {
       await inventoryAPI.update(editData.productID, {
         productName: editData.name,
@@ -164,6 +168,7 @@ const UserInventory = () => {
       name: item.ProductName,
       sku: item.SKU,
       price: item.UnitPrice,
+      cost: item.CostPrice,
       description: item.Description || ''
     });
     setShowEdit(true);
@@ -473,14 +478,30 @@ const UserInventory = () => {
                   className="w-full border-b-2 border-gray-200 p-3 text-lg font-bold focus:outline-none focus:border-blue-600" 
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Unit Price (USD)</label>
-                <input 
-                  type="number" 
-                  value={editData.price} 
-                  onChange={e => setEditData({...editData, price: e.target.value})}
-                  className="w-full border-b-2 border-gray-200 p-3 text-lg font-mono font-bold focus:outline-none focus:border-blue-600" 
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Unit Cost (USD)</label>
+                  <input 
+                    type="text" 
+                    value={editData.cost} 
+                    readOnly
+                    className="w-full bg-gray-50 border-b-2 border-gray-100 p-3 text-lg font-mono font-bold text-gray-400 cursor-not-allowed" 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Selling Price (USD)</label>
+                  <input 
+                    type="number" 
+                    value={editData.price} 
+                    onChange={e => setEditData({...editData, price: e.target.value})}
+                    className={`w-full border-b-2 p-3 text-lg font-mono font-bold focus:outline-none transition-colors ${parseFloat(editData.price) < parseFloat(editData.cost) ? 'border-red-500 text-red-600 focus:border-red-600' : 'border-gray-200 focus:border-blue-600'}`} 
+                  />
+                  {parseFloat(editData.price) < parseFloat(editData.cost) && (
+                    <p className="text-[9px] font-bold text-red-500 uppercase mt-1 flex items-center gap-1">
+                      <AlertCircle size={10} /> Selling below cost
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Description</label>
