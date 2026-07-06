@@ -19,7 +19,6 @@ const CustomCheckbox = ({ label, checked, onChange }) => (
 );
 
 const initialForm = { fullName: '', email: '', role: 'Administrator', password: generatePassword(),
-  permissions: { manageUsers: true, accessFinancial: true, databaseBackups: true, modifyGlobal: true },
   requirePasswordChange: true };
 
 const Users = () => {
@@ -40,10 +39,6 @@ const Users = () => {
     catch { }
     finally { setLoadingUsers(false); }
   };
-
-  const togglePermission = (key) => setFormData(prev => ({
-    ...prev, permissions: { ...prev.permissions, [key]: !prev.permissions[key] }
-  }));
 
   const handleCancel = () => {
     Swal.fire({ title: 'Discard Changes?', text: 'All entered data will be lost.', icon: 'warning',
@@ -79,7 +74,6 @@ const Users = () => {
         fullName: formData.fullName, email: formData.email,
         role: formData.role, password: formData.password,
         requirePasswordChange: formData.requirePasswordChange,
-        permissions: formData.permissions,
       });
       Swal.fire({ icon: 'success', title: 'Account Created!',
         html: `<p>Admin account for <strong>${formData.fullName}</strong> has been created.</p>
@@ -152,16 +146,6 @@ const Users = () => {
                   </div>
                 </div>
               )}
-            </section>
-
-            <section className="mb-8">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-t border-gray-200 pt-8">Access Permissions</h2>
-              <div className="grid grid-cols-2 gap-y-4">
-                <CustomCheckbox label="Manage Users" checked={formData.permissions.manageUsers} onChange={() => togglePermission('manageUsers')} />
-                <CustomCheckbox label="Access Financial Reports" checked={formData.permissions.accessFinancial} onChange={() => togglePermission('accessFinancial')} />
-                <CustomCheckbox label="Database Backups" checked={formData.permissions.databaseBackups} onChange={() => togglePermission('databaseBackups')} />
-                <CustomCheckbox label="Modify Global Settings" checked={formData.permissions.modifyGlobal} onChange={() => togglePermission('modifyGlobal')} />
-              </div>
             </section>
 
             <section className="mb-10">
