@@ -5,21 +5,6 @@ USE InventoryManagementSystemDB;
 GO
 
 -- --------------------------------------------------
--- Table: Adjustments
--- --------------------------------------------------
-CREATE TABLE Adjustments (
-    AdjustmentID INT IDENTITY(1,1) NOT NULL,
-    ProductID INT NOT NULL,
-    WarehouseID INT NOT NULL,
-    AdjustmentType VARCHAR(20) NOT NULL,
-    QuantityAdjusted INT NOT NULL,
-    AdjustmentDate DATETIME2 NOT NULL DEFAULT (sysdatetime()),
-    Reason VARCHAR(255) NULL,
-    AdjustedByUserID INT NOT NULL,
-    PRIMARY KEY (AdjustmentID)
-);
-
--- --------------------------------------------------
 -- Table: Alerts
 -- --------------------------------------------------
 CREATE TABLE Alerts (
@@ -161,30 +146,6 @@ CREATE TABLE LocationCapacity (
 );
 
 -- --------------------------------------------------
--- Table: Payments
--- --------------------------------------------------
-CREATE TABLE Payments (
-    PaymentID INT IDENTITY(1,1) NOT NULL,
-    InvoiceID INT NOT NULL,
-    PaymentDate DATE NOT NULL,
-    AmountPaid DECIMAL(18,2) NOT NULL,
-    PaymentMethod VARCHAR(20) NOT NULL,
-    PaymentStatus VARCHAR(20) NOT NULL DEFAULT ('Completed'),
-    ReceivedByUserID INT NOT NULL,
-    PRIMARY KEY (PaymentID)
-);
-
--- --------------------------------------------------
--- Table: Permissions
--- --------------------------------------------------
-CREATE TABLE Permissions (
-    PermissionID INT IDENTITY(1,1) NOT NULL,
-    PermissionName VARCHAR(100) NOT NULL,
-    Description VARCHAR(255) NULL,
-    PRIMARY KEY (PermissionID)
-);
-
--- --------------------------------------------------
 -- Table: Products
 -- --------------------------------------------------
 CREATE TABLE Products (
@@ -235,16 +196,6 @@ CREATE TABLE PurchaseOrders (
 );
 
 -- --------------------------------------------------
--- Table: RolePermissions
--- --------------------------------------------------
-CREATE TABLE RolePermissions (
-    RoleID INT NOT NULL,
-    PermissionID INT NOT NULL,
-    GrantedAt DATETIME2 NOT NULL DEFAULT (sysdatetime()),
-    PRIMARY KEY (PermissionID, RoleID)
-);
-
--- --------------------------------------------------
 -- Table: Roles
 -- --------------------------------------------------
 CREATE TABLE Roles (
@@ -252,20 +203,6 @@ CREATE TABLE Roles (
     RoleName VARCHAR(50) NOT NULL,
     Description VARCHAR(255) NULL,
     PRIMARY KEY (RoleID)
-);
-
--- --------------------------------------------------
--- Table: SalesOrderDetails
--- --------------------------------------------------
-CREATE TABLE SalesOrderDetails (
-    SODetailID INT IDENTITY(1,1) NOT NULL,
-    SalesOrderID INT NOT NULL,
-    ProductID INT NOT NULL,
-    QuantitySold INT NOT NULL,
-    UnitPrice DECIMAL(18,2) NOT NULL,
-    DiscountAmount DECIMAL(18,2) NOT NULL DEFAULT ((0)),
-    LineTotal DECIMAL(18,2) NOT NULL,
-    PRIMARY KEY (SODetailID)
 );
 
 -- --------------------------------------------------
@@ -357,36 +294,27 @@ CREATE TABLE Warehouses (
 ALTER TABLE PurchaseOrderDetails ADD CONSTRAINT FK_PurchaseOrderDetails_PurchaseOrders FOREIGN KEY (PurchaseOrderID) REFERENCES PurchaseOrders (PurchaseOrderID);
 ALTER TABLE SalesOrders ADD CONSTRAINT FK_SalesOrders_Customers FOREIGN KEY (CustomerID) REFERENCES Customers (CustomerID);
 ALTER TABLE Invoices ADD CONSTRAINT FK_Invoices_Customers FOREIGN KEY (CustomerID) REFERENCES Customers (CustomerID);
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT FK_SalesOrderDetails_SalesOrders FOREIGN KEY (SalesOrderID) REFERENCES SalesOrders (SalesOrderID);
 ALTER TABLE Deliveries ADD CONSTRAINT FK_Deliveries_SalesOrders FOREIGN KEY (SalesOrderID) REFERENCES SalesOrders (SalesOrderID);
 ALTER TABLE Invoices ADD CONSTRAINT FK_Invoices_SalesOrders FOREIGN KEY (SalesOrderID) REFERENCES SalesOrders (SalesOrderID);
 ALTER TABLE DeliveryHistory ADD CONSTRAINT FK__DeliveryH__Deliv__09746778 FOREIGN KEY (DeliveryID) REFERENCES Deliveries (DeliveryID);
-ALTER TABLE Payments ADD CONSTRAINT FK_Payments_Invoices FOREIGN KEY (InvoiceID) REFERENCES Invoices (InvoiceID);
 ALTER TABLE InvoiceItems ADD CONSTRAINT FK__InvoiceIt__Invoi__7E02B4CC FOREIGN KEY (InvoiceID) REFERENCES Invoices (InvoiceID);
 ALTER TABLE InventoryTransactions ADD CONSTRAINT FK_InventoryTransactions_Users FOREIGN KEY (PerformedByUserID) REFERENCES Users (UserID);
 ALTER TABLE PurchaseOrders ADD CONSTRAINT FK_PurchaseOrders_Users FOREIGN KEY (OrderedByUserID) REFERENCES Users (UserID);
 ALTER TABLE SalesOrders ADD CONSTRAINT FK_SalesOrders_Users FOREIGN KEY (CreatedByUserID) REFERENCES Users (UserID);
 ALTER TABLE Deliveries ADD CONSTRAINT FK_Deliveries_Users FOREIGN KEY (DispatchedByUserID) REFERENCES Users (UserID);
-ALTER TABLE Payments ADD CONSTRAINT FK_Payments_Users FOREIGN KEY (ReceivedByUserID) REFERENCES Users (UserID);
-ALTER TABLE Adjustments ADD CONSTRAINT FK_Adjustments_Users FOREIGN KEY (AdjustedByUserID) REFERENCES Users (UserID);
 ALTER TABLE UserRoles ADD CONSTRAINT FK_UserRoles_Users FOREIGN KEY (UserID) REFERENCES Users (UserID);
 ALTER TABLE Alerts ADD CONSTRAINT FK__Alerts__Acknowle__7755B73D FOREIGN KEY (AcknowledgedBy) REFERENCES Users (UserID);
 ALTER TABLE SystemLogs ADD CONSTRAINT FK__SystemLog__UserI__7B264821 FOREIGN KEY (UserID) REFERENCES Users (UserID);
 ALTER TABLE UserRoles ADD CONSTRAINT FK_UserRoles_Roles FOREIGN KEY (RoleID) REFERENCES Roles (RoleID);
-ALTER TABLE RolePermissions ADD CONSTRAINT FK_RolePermissions_Roles FOREIGN KEY (RoleID) REFERENCES Roles (RoleID);
-ALTER TABLE RolePermissions ADD CONSTRAINT FK_RolePermissions_Permissions FOREIGN KEY (PermissionID) REFERENCES Permissions (PermissionID);
 ALTER TABLE Products ADD CONSTRAINT FK_Products_Categories FOREIGN KEY (CategoryID) REFERENCES Categories (CategoryID);
 ALTER TABLE PurchaseOrders ADD CONSTRAINT FK_PurchaseOrders_Suppliers FOREIGN KEY (SupplierID) REFERENCES Suppliers (SupplierID);
 ALTER TABLE Products ADD CONSTRAINT FK_Products_Suppliers FOREIGN KEY (SupplierID) REFERENCES Suppliers (SupplierID);
 ALTER TABLE LocationCapacity ADD CONSTRAINT FK__LocationC__Wareh__05A3D694 FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
 ALTER TABLE PurchaseOrders ADD CONSTRAINT FK_PurchaseOrders_Warehouses FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
 ALTER TABLE Deliveries ADD CONSTRAINT FK_Deliveries_Warehouses FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
-ALTER TABLE Adjustments ADD CONSTRAINT FK_Adjustments_Warehouses FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
 ALTER TABLE Inventory ADD CONSTRAINT FK_Inventory_Warehouses FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
 ALTER TABLE InventoryTransactions ADD CONSTRAINT FK_InventoryTransactions_Warehouses FOREIGN KEY (WarehouseID) REFERENCES Warehouses (WarehouseID);
 ALTER TABLE PurchaseOrderDetails ADD CONSTRAINT FK_PurchaseOrderDetails_Products FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT FK_SalesOrderDetails_Products FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
-ALTER TABLE Adjustments ADD CONSTRAINT FK_Adjustments_Products FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
 ALTER TABLE Inventory ADD CONSTRAINT FK_Inventory_Products FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
 ALTER TABLE InventoryTransactions ADD CONSTRAINT FK_InventoryTransactions_Products FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
 ALTER TABLE InvoiceItems ADD CONSTRAINT FK__InvoiceIt__Produ__7EF6D905 FOREIGN KEY (ProductID) REFERENCES Products (ProductID);
@@ -405,18 +333,9 @@ ALTER TABLE PurchaseOrderDetails ADD CONSTRAINT CK_PurchaseOrderDetails_LineTota
 ALTER TABLE Customers ADD CONSTRAINT CK_Customers_CustomerType CHECK (CustomerType='WalkIn' OR CustomerType='Corporate' OR CustomerType='Regular' OR CustomerType='Wholesale' OR CustomerType='VIP');
 ALTER TABLE SalesOrders ADD CONSTRAINT CK_SalesOrders_Status CHECK (Status='Cancelled' OR Status='Completed' OR Status='Dispatched' OR Status='Packed' OR Status='Confirmed' OR Status='Pending');
 ALTER TABLE SalesOrders ADD CONSTRAINT CK_SalesOrders_TotalAmount CHECK (TotalAmount>=(0));
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT CK_SalesOrderDetails_QuantitySold CHECK (QuantitySold>(0));
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT CK_SalesOrderDetails_UnitPrice CHECK (UnitPrice>=(0));
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT CK_SalesOrderDetails_DiscountAmount CHECK (DiscountAmount>=(0));
-ALTER TABLE SalesOrderDetails ADD CONSTRAINT CK_SalesOrderDetails_LineTotal CHECK (LineTotal>=(0));
 ALTER TABLE Deliveries ADD CONSTRAINT CK_Deliveries_Status CHECK (DeliveryStatus='Returned' OR DeliveryStatus='Failed' OR DeliveryStatus='Delivered' OR DeliveryStatus='In Transit' OR DeliveryStatus='Shipped' OR DeliveryStatus='Packed' OR DeliveryStatus='Scheduled');
 ALTER TABLE Invoices ADD CONSTRAINT CK_Invoices_TotalAmount CHECK (TotalAmount>=(0));
 ALTER TABLE Invoices ADD CONSTRAINT CK_Invoices_Status CHECK (InvoiceStatus='Cancelled' OR InvoiceStatus='Overdue' OR InvoiceStatus='Paid' OR InvoiceStatus='Partially Paid' OR InvoiceStatus='Unpaid');
-ALTER TABLE Payments ADD CONSTRAINT CK_Payments_AmountPaid CHECK (AmountPaid>=(0));
-ALTER TABLE Payments ADD CONSTRAINT CK_Payments_Method CHECK (PaymentMethod='Cheque' OR PaymentMethod='Bank Transfer' OR PaymentMethod='Credit Card' OR PaymentMethod='Cash');
-ALTER TABLE Payments ADD CONSTRAINT CK_Payments_Status CHECK (PaymentStatus='Refunded' OR PaymentStatus='Failed' OR PaymentStatus='Pending' OR PaymentStatus='Completed');
-ALTER TABLE Adjustments ADD CONSTRAINT CK_Adjustments_Type CHECK (AdjustmentType='Found' OR AdjustmentType='Loss' OR AdjustmentType='Damage' OR AdjustmentType='Stock Out' OR AdjustmentType='Stock In');
-ALTER TABLE Adjustments ADD CONSTRAINT CK_Adjustments_Quantity CHECK (QuantityAdjusted<>(0));
 ALTER TABLE Products ADD CONSTRAINT CK_Products_UnitPrice CHECK (UnitPrice>=(0));
 ALTER TABLE Products ADD CONSTRAINT CK_Products_CostPrice CHECK (CostPrice>=(0));
 ALTER TABLE Products ADD CONSTRAINT CK_Products_ReorderLevel CHECK (ReorderLevel>=(0));
