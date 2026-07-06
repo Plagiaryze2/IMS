@@ -1508,7 +1508,7 @@ app.get('/api/users', auth, async (req, res) => {
 
 // POST /api/users  — Create admin user
 app.post('/api/users', auth, async (req, res) => {
-    const { fullName, email, username, role = 'Administrator', password, requirePasswordChange = true, permissions = {} } = req.body;
+    const { fullName, email, username, role = 'Administrator', password, requirePasswordChange = true } = req.body;
     if (!fullName || !email || !password) return res.status(400).json({ error: 'Full name, email and password are required.' });
     try {
         const db = await getPool();
