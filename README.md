@@ -103,21 +103,3 @@ npm run dev
 ```
  
 The app will be available at the Vite dev server URL (default `http://localhost:5173`).
- 
-## API Overview
- 
-The backend exposes REST endpoints under `/api`, including:
- 
-- `POST /api/auth/login`, `POST /api/auth/register`, `POST /api/auth/change-password`
-- `GET/POST/PUT/DELETE /api/inventory`, `PATCH /api/inventory/adjust`, `POST /api/inventory/bulk-adjust`, `POST /api/inventory/batch-sync`
-- `GET/POST/PUT/DELETE /api/suppliers`
-- `GET/POST /api/purchase-orders`, `PATCH /api/purchase-orders/:id/status`
-- `GET/POST /api/sales/invoices`, `PATCH /api/sales/invoice/:id/status`, `POST /api/sales/invoice/:id/ship`
-- `GET/POST /api/warehouses`, `GET /api/warehouse/inventory`, `GET /api/warehouse/locations`, `POST /api/warehouse/transfer`
-- `GET/POST /api/shipments`, `POST /api/shipments/:id/tracking`
-- `GET/POST /api/customers`
-- `GET/POST /api/users`, `PUT /api/users/:id/toggle`
-- `GET /api/dashboard/stats`, `GET /api/dashboard/chart`, `GET /api/dashboard/logs`
-- `GET /api/user/dashboard/stats`, `GET /api/user/dashboard/activity`, `GET /api/user/reports/stats`
-- `GET/POST /api/alerts`, `PUT /api/alerts/:id/acknowledge`
-- `GET /api/search`
