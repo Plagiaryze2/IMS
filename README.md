@@ -3,6 +3,13 @@ Readme · MD
 # IMS — Inventory Management System
  
 A full-stack inventory management system with separate admin and user portals for tracking products, warehouses, suppliers, purchase orders, sales invoices, shipments, and alerts.
+
+## Developers
+
+- **Team:** Yeagerists++
+- **M. Anas** — Roll No: `24L-3004`
+- **Abdul Ahad** — Roll No: `24L-3029`
+- **M. Babar Shahzad** — Roll No: `24L-3047`
  
 **Stack:** React 19 (Vite, Tailwind CSS) frontend · Node.js/Express 5 backend · Microsoft SQL Server database.
  
