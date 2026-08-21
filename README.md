@@ -1,6 +1,6 @@
 
 Readme · MD
-# IMS — Inventory Management System
+# IMS — CodeRed Inventory Management System
  
 A full-stack inventory management system with separate admin and user portals for tracking products, warehouses, suppliers, purchase orders, sales invoices, shipments, and alerts.
 
